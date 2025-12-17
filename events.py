@@ -37,14 +37,13 @@ st.session_state.setdefault("page", "login")
 st.session_state.setdefault("edit_id", None)
 
 # --------------------------------------------------
-# DATA FUNCTIONS (NO AUTO-DELETES)
+# DATA FUNCTIONS (STABLE)
 # --------------------------------------------------
 def load_events():
     try:
         df = pd.read_csv(DATA_FILE)
     except FileNotFoundError:
         return pd.DataFrame(columns=BASE_COLUMNS)
-
     return df
 
 
@@ -134,7 +133,6 @@ elif st.session_state.page == "admin":
         if add:
             if not title.strip():
                 st.error("Event description required")
- remember
             else:
                 df = load_events()
                 new_row = {
@@ -147,7 +145,7 @@ elif st.session_state.page == "admin":
                 }
                 df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                 save_events(df)
-                st.success("Event added")
+                st.success("Event added successfully")
                 st.rerun()
 
     # ---------- MANAGE EVENTS ----------
@@ -195,8 +193,11 @@ elif st.session_state.page == "edit":
 
     with st.form("edit_form"):
         exam = st.selectbox("Exam", EXAMS, index=EXAMS.index(e["Exam"]))
-        category = st.selectbox("Category", EVENT_CATEGORIES,
-                                index=EVENT_CATEGORIES.index(e["Category"]))
+        category = st.selectbox(
+            "Category",
+            EVENT_CATEGORIES,
+            index=EVENT_CATEGORIES.index(e["Category"])
+        )
         title = st.text_input("Description", value=e["Title"])
 
         c1, c2 = st.columns(2)
