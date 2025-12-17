@@ -175,6 +175,11 @@ if st.session_state.page == "admin":
 
     # ---------- LIST ----------
     st.subheader("📋 Events")
+    if st.button("✏️ Edit", key=f'edit_{int(r["EventID"])}_{_}'):
+        st.session_state.edit_id = int(r["EventID"])
+        st.session_state.page = "edit"
+        st.rerun()
+
     for _, r in df.iterrows():
         with st.expander(f'{r["Program"]} – {r["Category"]}'):
             st.write(f'{r["Start Date"]} → {r["End Date"]}')
