@@ -91,13 +91,33 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==================================================
-# CARD
+# CARD - FIXED TIME FORMATTING
 # ==================================================
 def card(r):
     s = pd.to_datetime(r["Start Date"])
     is_today = s.date() == date.today()
     cls = "card today" if is_today else "card"
-    time_html = "All Day" if r["All Day"] == "True" else f'{r["Start Time"]} – {r["End Time"]}'
+    
+    # Handle time display properly
+    if r["All Day"] == "True":
+        time_html = "All Day"
+    else:
+        # Convert times to proper format
+        try:
+            if isinstance(r["Start Time"], str) and isinstance(r["End Time"], str):
+                # Try to parse existing times
+                if ":" in r["Start Time"]:
+                    # Already in HH:MM format
+                    start_time = r["Start Time"]
+                    end_time = r["End Time"]
+                    time_html = f'{start_time} – {end_time}'
+                else:
+                    # Try 12-hour format
+                    time_html = f'{r["Start Time"]} – {r["End Time"]}'
+            else:
+                time_html = "Time not set"
+        except:
+            time_html = "Time not set"
 
     st.markdown(f"""
     <div class="{cls}">
@@ -130,7 +150,53 @@ def export_pdf(df):
     return buf
 
 # ==================================================
-# ADMIN PAGE (UNCHANGED)
+# TIME FORMATTING FUNCTIONS
+# ==================================================
+def format_12h(t):
+    """Convert datetime.time to 12-hour format"""
+    if pd.isna(t) or t == "":
+        return ""
+    if isinstance(t, str):
+        try:
+            # Try to parse the string
+            if "AM" in t.upper() or "PM" in t.upper():
+                return t  # Already in 12-hour format
+            elif ":" in t:
+                # Parse HH:MM format
+                parts = t.split(":")
+                h = int(parts[0])
+                m = int(parts[1]) if len(parts) > 1 else 0
+                t = time(h, m)
+            else:
+                return t
+        except:
+            return t
+    
+    if isinstance(t, time):
+        hour = t.hour
+        minute = t.minute
+        suffix = "AM" if hour < 12 else "PM"
+        
+        if hour == 0:
+            hour = 12
+        elif hour > 12:
+            hour = hour - 12
+        
+        minute_str = f":{minute:02d}" if minute > 0 else ""
+        return f"{hour}{minute_str} {suffix}"
+    
+    return str(t)
+
+def format_24h(t):
+    """Convert datetime.time to 24-hour format"""
+    if pd.isna(t) or t == "":
+        return ""
+    if isinstance(t, time):
+        return f"{t.hour:02d}:{t.minute:02d}"
+    return str(t)
+
+# ==================================================
+# ADMIN PAGE - FIXED TIME INPUTS
 # ==================================================
 if st.session_state.page == "admin":
 
@@ -147,10 +213,22 @@ if st.session_state.page == "admin":
         allday = st.checkbox("All Day")
         if not allday:
             t1, t2 = st.columns(2)
-            stime = t1.time_input("Start Time", time(10,0))
-            etime = t2.time_input("End Time", time(17,0))
+            # Create proper time options (every 30 minutes)
+            time_options = [time(h, m) for h in range(24) for m in (0, 30)]
+            time_str_options = [format_12h(t) for t in time_options]
+            
+            # Default to 10:00 AM and 5:00 PM
+            default_start_idx = time_options.index(time(10, 0))
+            default_end_idx = time_options.index(time(17, 0))
+            
+            stime_str = t1.selectbox("Start Time", time_str_options, index=default_start_idx)
+            etime_str = t2.selectbox("End Time", time_str_options, index=default_end_idx)
+            
+            # Convert back to time objects
+            stime = time_options[time_str_options.index(stime_str)]
+            etime = time_options[time_str_options.index(etime_str)]
         else:
-            stime = etime = ""
+            stime = etime = time(0, 0)  # Default for storage
 
         add = st.form_submit_button("Add Event")
 
@@ -161,19 +239,25 @@ if st.session_state.page == "admin":
             "Category": category,
             "Start Date": sd,
             "End Date": ed,
-            "Start Time": stime.strftime("%I:%M %p") if stime else "",
-            "End Time": etime.strftime("%I:%M %p") if etime else "",
+            "Start Time": format_12h(stime) if not allday else "",
+            "End Time": format_12h(etime) if not allday else "",
             "All Day": str(allday)
         }
         df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
         save_events(df)
         st.success("Event added")
-        
+        st.session_state.page = "user" 
         st.rerun()
 
     st.subheader("📋 Events")
     for idx, r in df.iterrows():
         with st.expander(f'{r["Program"]} – {r["Category"]}'):
+            st.write(f"**Dates:** {r['Start Date']} to {r['End Date']}")
+            if r["All Day"] == "True":
+                st.write("**Time:** All Day")
+            else:
+                st.write(f"**Time:** {r['Start Time']} – {r['End Time']}")
+            
             c1, c2 = st.columns(2)
             if c1.button("✏️ Edit", key=f"edit_{idx}"):
                 st.session_state.edit_idx = idx
@@ -189,7 +273,7 @@ if st.session_state.page == "admin":
         st.rerun()
 
 # ==================================================
-# EDIT PAGE (UNCHANGED)
+# EDIT PAGE - FIXED TIME INPUTS
 # ==================================================
 elif st.session_state.page == "edit":
 
@@ -198,20 +282,67 @@ elif st.session_state.page == "edit":
 
     st.header("✏️ Edit Event")
 
+    # Parse existing times
+    existing_allday = r["All Day"] == "True"
+    
+    # Parse existing time strings to time objects if they exist
+    stime_existing = time(10, 0)  # Default
+    etime_existing = time(17, 0)  # Default
+    
+    if not existing_allday and r["Start Time"] and r["End Time"]:
+        try:
+            # Try to parse 12-hour format
+            for time_str, default in [(r["Start Time"], time(10, 0)), (r["End Time"], time(17, 0))]:
+                if isinstance(time_str, str):
+                    time_str = time_str.strip().upper()
+                    if "AM" in time_str or "PM" in time_str:
+                        # 12-hour format
+                        parts = time_str.replace("AM", "").replace("PM", "").strip().split(":")
+                        hour = int(parts[0])
+                        minute = int(parts[1]) if len(parts) > 1 else 0
+                        
+                        if "PM" in time_str and hour < 12:
+                            hour += 12
+                        elif "AM" in time_str and hour == 12:
+                            hour = 0
+                        
+                        if time_str == r["Start Time"]:
+                            stime_existing = time(hour, minute)
+                        else:
+                            etime_existing = time(hour, minute)
+        except:
+            pass
+
     with st.form("edit_form"):
         program = st.selectbox("Program", PROGRAMS, index=PROGRAMS.index(r["Program"]))
         category = st.selectbox("Category", CATEGORIES, index=CATEGORIES.index(r["Category"]))
         c1, c2 = st.columns(2)
         sd = c1.date_input("Start Date", pd.to_datetime(r["Start Date"]).date())
         ed = c2.date_input("End Date", pd.to_datetime(r["End Date"]).date())
-        allday = st.checkbox("All Day", value=(r["All Day"] == "True"))
+        allday = st.checkbox("All Day", value=existing_allday)
 
         if not allday:
+            # Create proper time options
+            time_options = [time(h, m) for h in range(24) for m in (0, 30)]
+            time_str_options = [format_12h(t) for t in time_options]
+            
+            # Find closest existing times in options
+            start_idx = min(range(len(time_options)), 
+                          key=lambda i: abs(time_options[i].hour * 60 + time_options[i].minute - 
+                                           (stime_existing.hour * 60 + stime_existing.minute)))
+            end_idx = min(range(len(time_options)), 
+                         key=lambda i: abs(time_options[i].hour * 60 + time_options[i].minute - 
+                                          (etime_existing.hour * 60 + etime_existing.minute)))
+            
             t1, t2 = st.columns(2)
-            stime = t1.time_input("Start Time", time(10,0))
-            etime = t2.time_input("End Time", time(17,0))
+            stime_str = t1.selectbox("Start Time", time_str_options, index=start_idx)
+            etime_str = t2.selectbox("End Time", time_str_options, index=end_idx)
+            
+            # Convert back to time objects
+            stime = time_options[time_str_options.index(stime_str)]
+            etime = time_options[time_str_options.index(etime_str)]
         else:
-            stime = etime = ""
+            stime = etime = time(0, 0)
 
         update = st.form_submit_button("Update")
 
@@ -221,10 +352,10 @@ elif st.session_state.page == "edit":
         df.at[st.session_state.edit_idx, "Start Date"] = sd
         df.at[st.session_state.edit_idx, "End Date"] = ed
         df.at[st.session_state.edit_idx, "Start Time"] = (
-            stime.strftime("%I:%M %p") if stime else ""
+            format_12h(stime) if not allday else ""
         )
         df.at[st.session_state.edit_idx, "End Time"] = (
-            etime.strftime("%I:%M %p") if etime else ""
+            format_12h(etime) if not allday else ""
         )
         df.at[st.session_state.edit_idx, "All Day"] = str(allday)
     
@@ -233,16 +364,12 @@ elif st.session_state.page == "edit":
         st.session_state.page = "admin"
         st.rerun()
 
-
     if st.button("⬅ Back"):
         st.session_state.page = "admin"
         st.rerun()
 
 # ==================================================
-# USER PAGE (ENHANCED)
-# ==================================================
-# ==================================================
-# USER PAGE (ENHANCED) - FIXED FILTERING
+# USER PAGE
 # ==================================================
 else:
 
@@ -314,11 +441,7 @@ else:
 
     # ---- Show all events toggle ----
     show_all = st.checkbox("Show all events (including past events)", value=False)
-    if not show_all:
-        # For "Cards", "Weekly", and "Monthly" views, we already filtered above
-        # For "Calendar" view, we need to ensure it shows future/ongoing events
-        pass
-    else:
+    if show_all:
         # Reload all events without date filtering
         df = load_events()
         df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce").dt.normalize()
