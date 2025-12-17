@@ -96,10 +96,18 @@ if "role" not in st.session_state:
 # --------------------------------------------------
 # LOGIN PAGE
 # --------------------------------------------------
+# --------------------------------------------------
+# LOGIN PAGE (FIXED FOR STREAMLIT CLOUD)
+# --------------------------------------------------
 st.title("📢 Admission Event Notifications")
 
-if st.session_state.role is None:
-    role = st.radio("Login As", ["User", "Admin"])
+if st.session_state.role == "":
+
+    role = st.radio(
+        "Select Role",
+        ["", "User", "Admin"],
+        index=0
+    )
 
     if role == "Admin":
         with st.form("admin_login"):
@@ -110,12 +118,14 @@ if st.session_state.role is None:
             if login:
                 if u == ADMIN_USERNAME and p == ADMIN_PASSWORD:
                     st.session_state.role = "Admin"
-                    st.rerun()
+                    st.ererun()
                 else:
                     st.error("Invalid credentials")
-    else:
-        st.session_state.role = "User"
-        st.rerun()
+
+    elif role == "User":
+        if st.button("Continue as User"):
+            st.session_state.role = "User"
+            st.rerun()
 
 # --------------------------------------------------
 # LOAD & ENRICH DATA
