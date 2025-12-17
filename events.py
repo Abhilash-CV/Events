@@ -68,7 +68,7 @@ st.markdown("""
 .cat {font-size:12px;font-weight:700;margin-top:4px;}
 .time {font-size:10px;color:#555;}
 .program {
-  margin-top:4px;font-size:10px;background:#e3f2fd;color:#0d47a1;
+  margin-top:4px;font-size:10px;background:#47b0fc;color:#0d47a1;
   border-radius:10px;padding:1px 6px;display:inline-block;
 }
 .section {font-size:18px;font-weight:700;margin:18px 0 10px;}
