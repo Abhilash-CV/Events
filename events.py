@@ -59,9 +59,15 @@ def next_id(df):
 st.markdown("""
 <style>
 .card {
-  background:##47b0fc;border-radius:8px;padding:8px;text-align:center;
-  box-shadow:0 1px 6px rgba(0,0,0,.08);margin-bottom:10px;
+  background: #95d1fc;
+  border-radius: 8px;
+  padding: 8px;
+  text-align: center;
+  box-shadow: 0 1px 6px rgba(0,0,0,.08);
+  margin-bottom: 10px;
+  color: #0b3558; /* dark text for contrast */
 }
+
 .today {border:1.5px solid #000;}
 .month {font-size:10px;font-weight:700;color:#666;}
 .day {font-size:20px;font-weight:700;}
