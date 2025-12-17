@@ -102,22 +102,10 @@ def card(r):
     if r["All Day"] == "True":
         time_html = "All Day"
     else:
-        # Convert times to proper format
-        try:
-            if isinstance(r["Start Time"], str) and isinstance(r["End Time"], str):
-                # Try to parse existing times
-                if ":" in r["Start Time"]:
-                    # Already in HH:MM format
-                    start_time = r["Start Time"]
-                    end_time = r["End Time"]
-                    time_html = f'{start_time} – {end_time}'
-                else:
-                    # Try 12-hour format
-                    time_html = f'{r["Start Time"]} – {r["End Time"]}'
-            else:
-                time_html = "Time not set"
-        except:
-            time_html = "Time not set"
+        # Use the stored time format directly
+        start_time = r["Start Time"] if pd.notna(r["Start Time"]) and r["Start Time"] != "" else "N/A"
+        end_time = r["End Time"] if pd.notna(r["End Time"]) and r["End Time"] != "" else "N/A"
+        time_html = f'{start_time} – {end_time}'
 
     st.markdown(f"""
     <div class="{cls}">
@@ -157,20 +145,8 @@ def format_12h(t):
     if pd.isna(t) or t == "":
         return ""
     if isinstance(t, str):
-        try:
-            # Try to parse the string
-            if "AM" in t.upper() or "PM" in t.upper():
-                return t  # Already in 12-hour format
-            elif ":" in t:
-                # Parse HH:MM format
-                parts = t.split(":")
-                h = int(parts[0])
-                m = int(parts[1]) if len(parts) > 1 else 0
-                t = time(h, m)
-            else:
-                return t
-        except:
-            return t
+        # If already a string, return as is
+        return t
     
     if isinstance(t, time):
         hour = t.hour
@@ -182,18 +158,46 @@ def format_12h(t):
         elif hour > 12:
             hour = hour - 12
         
-        minute_str = f":{minute:02d}" if minute > 0 else ""
+        minute_str = f":{minute:02d}" if minute > 0 else ":00"
         return f"{hour}{minute_str} {suffix}"
     
     return str(t)
 
-def format_24h(t):
-    """Convert datetime.time to 24-hour format"""
-    if pd.isna(t) or t == "":
-        return ""
-    if isinstance(t, time):
-        return f"{t.hour:02d}:{t.minute:02d}"
-    return str(t)
+def parse_time_str(time_str):
+    """Parse time string to datetime.time object"""
+    if pd.isna(time_str) or time_str == "":
+        return None
+    
+    try:
+        # Handle 12-hour format
+        time_str = str(time_str).strip().upper()
+        if "AM" in time_str or "PM" in time_str:
+            time_part = time_str.replace("AM", "").replace("PM", "").strip()
+            if ":" in time_part:
+                hour_str, minute_str = time_part.split(":")
+                hour = int(hour_str)
+                minute = int(minute_str) if minute_str else 0
+            else:
+                hour = int(time_part)
+                minute = 0
+            
+            # Adjust for AM/PM
+            if "PM" in time_str and hour < 12:
+                hour += 12
+            elif "AM" in time_str and hour == 12:
+                hour = 0
+            
+            return time(hour, minute)
+        # Handle 24-hour format
+        elif ":" in time_str:
+            hour_str, minute_str = time_str.split(":")
+            hour = int(hour_str)
+            minute = int(minute_str) if minute_str else 0
+            return time(hour, minute)
+    except:
+        pass
+    
+    return None
 
 # ==================================================
 # ADMIN PAGE - FIXED TIME INPUTS
@@ -228,7 +232,7 @@ if st.session_state.page == "admin":
             stime = time_options[time_str_options.index(stime_str)]
             etime = time_options[time_str_options.index(etime_str)]
         else:
-            stime = etime = time(0, 0)  # Default for storage
+            stime = etime = None
 
         add = st.form_submit_button("Add Event")
 
@@ -237,38 +241,42 @@ if st.session_state.page == "admin":
             "EventID": next_id(df),
             "Program": program,
             "Category": category,
-            "Start Date": sd,
-            "End Date": ed,
-            "Start Time": format_12h(stime) if not allday else "",
-            "End Time": format_12h(etime) if not allday else "",
+            "Start Date": sd.strftime("%Y-%m-%d"),
+            "End Date": ed.strftime("%Y-%m-%d"),
+            "Start Time": format_12h(stime) if not allday and stime else "",
+            "End Time": format_12h(etime) if not allday and etime else "",
             "All Day": str(allday)
         }
         df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
         save_events(df)
-        st.success("Event added")
-        st.session_state.page = "user" 
+        st.success("Event added!")
         st.rerun()
 
     st.subheader("📋 Events")
-    for idx, r in df.iterrows():
-        with st.expander(f'{r["Program"]} – {r["Category"]}'):
-            st.write(f"**Dates:** {r['Start Date']} to {r['End Date']}")
-            if r["All Day"] == "True":
-                st.write("**Time:** All Day")
-            else:
-                st.write(f"**Time:** {r['Start Time']} – {r['End Time']}")
-            
-            c1, c2 = st.columns(2)
-            if c1.button("✏️ Edit", key=f"edit_{idx}"):
-                st.session_state.edit_idx = idx
-                st.session_state.page = "edit"
-                st.rerun()
-            if c2.button("❌ Delete", key=f"del_{idx}"):
-                df = df.drop(idx).reset_index(drop=True)
-                save_events(df)
-                st.rerun()
+    if df.empty:
+        st.info("No events yet. Add your first event above.")
+    else:
+        for idx, r in df.iterrows():
+            with st.expander(f'{r["Program"]} – {r["Category"]} (ID: {r["EventID"]})'):
+                st.write(f"**Dates:** {r['Start Date']} to {r['End Date']}")
+                if r["All Day"] == "True":
+                    st.write("**Time:** All Day")
+                else:
+                    st.write(f"**Time:** {r['Start Time']} – {r['End Time']}")
+                
+                c1, c2 = st.columns(2)
+                if c1.button("✏️ Edit", key=f"edit_{idx}"):
+                    st.session_state.edit_idx = idx
+                    st.session_state.page = "edit"
+                    st.rerun()
+                if c2.button("❌ Delete", key=f"del_{idx}"):
+                    df = df.drop(idx).reset_index(drop=True)
+                    save_events(df)
+                    st.success("Event deleted!")
+                    st.rerun()
 
-    if st.button("Logout"):
+    st.divider()
+    if st.button("⬅ Back to User View"):
         st.session_state.page = "user"
         st.rerun()
 
@@ -278,6 +286,11 @@ if st.session_state.page == "admin":
 elif st.session_state.page == "edit":
 
     df = load_events()
+    if df.empty:
+        st.error("No events to edit")
+        st.session_state.page = "admin"
+        st.rerun()
+    
     r = df.iloc[st.session_state.edit_idx]
 
     st.header("✏️ Edit Event")
@@ -286,32 +299,8 @@ elif st.session_state.page == "edit":
     existing_allday = r["All Day"] == "True"
     
     # Parse existing time strings to time objects if they exist
-    stime_existing = time(10, 0)  # Default
-    etime_existing = time(17, 0)  # Default
-    
-    if not existing_allday and r["Start Time"] and r["End Time"]:
-        try:
-            # Try to parse 12-hour format
-            for time_str, default in [(r["Start Time"], time(10, 0)), (r["End Time"], time(17, 0))]:
-                if isinstance(time_str, str):
-                    time_str = time_str.strip().upper()
-                    if "AM" in time_str or "PM" in time_str:
-                        # 12-hour format
-                        parts = time_str.replace("AM", "").replace("PM", "").strip().split(":")
-                        hour = int(parts[0])
-                        minute = int(parts[1]) if len(parts) > 1 else 0
-                        
-                        if "PM" in time_str and hour < 12:
-                            hour += 12
-                        elif "AM" in time_str and hour == 12:
-                            hour = 0
-                        
-                        if time_str == r["Start Time"]:
-                            stime_existing = time(hour, minute)
-                        else:
-                            etime_existing = time(hour, minute)
-        except:
-            pass
+    stime_existing = parse_time_str(r["Start Time"]) or time(10, 0)
+    etime_existing = parse_time_str(r["End Time"]) or time(17, 0)
 
     with st.form("edit_form"):
         program = st.selectbox("Program", PROGRAMS, index=PROGRAMS.index(r["Program"]))
@@ -327,12 +316,16 @@ elif st.session_state.page == "edit":
             time_str_options = [format_12h(t) for t in time_options]
             
             # Find closest existing times in options
-            start_idx = min(range(len(time_options)), 
-                          key=lambda i: abs(time_options[i].hour * 60 + time_options[i].minute - 
-                                           (stime_existing.hour * 60 + stime_existing.minute)))
-            end_idx = min(range(len(time_options)), 
-                         key=lambda i: abs(time_options[i].hour * 60 + time_options[i].minute - 
-                                          (etime_existing.hour * 60 + etime_existing.minute)))
+            start_idx = 0
+            end_idx = 0
+            if stime_existing:
+                start_idx = min(range(len(time_options)), 
+                              key=lambda i: abs(time_options[i].hour * 60 + time_options[i].minute - 
+                                               (stime_existing.hour * 60 + stime_existing.minute)))
+            if etime_existing:
+                end_idx = min(range(len(time_options)), 
+                             key=lambda i: abs(time_options[i].hour * 60 + time_options[i].minute - 
+                                              (etime_existing.hour * 60 + etime_existing.minute)))
             
             t1, t2 = st.columns(2)
             stime_str = t1.selectbox("Start Time", time_str_options, index=start_idx)
@@ -342,34 +335,39 @@ elif st.session_state.page == "edit":
             stime = time_options[time_str_options.index(stime_str)]
             etime = time_options[time_str_options.index(etime_str)]
         else:
-            stime = etime = time(0, 0)
+            stime = etime = None
 
         update = st.form_submit_button("Update")
+        cancel = st.form_submit_button("Cancel")
 
     if update:
         df.at[st.session_state.edit_idx, "Program"] = program
         df.at[st.session_state.edit_idx, "Category"] = category
-        df.at[st.session_state.edit_idx, "Start Date"] = sd
-        df.at[st.session_state.edit_idx, "End Date"] = ed
+        df.at[st.session_state.edit_idx, "Start Date"] = sd.strftime("%Y-%m-%d")
+        df.at[st.session_state.edit_idx, "End Date"] = ed.strftime("%Y-%m-%d")
         df.at[st.session_state.edit_idx, "Start Time"] = (
-            format_12h(stime) if not allday else ""
+            format_12h(stime) if not allday and stime else ""
         )
         df.at[st.session_state.edit_idx, "End Time"] = (
-            format_12h(etime) if not allday else ""
+            format_12h(etime) if not allday and etime else ""
         )
         df.at[st.session_state.edit_idx, "All Day"] = str(allday)
     
         save_events(df)
-        st.success("Event updated")
+        st.success("Event updated!")
+        st.session_state.page = "admin"
+        st.rerun()
+    
+    if cancel:
         st.session_state.page = "admin"
         st.rerun()
 
-    if st.button("⬅ Back"):
+    if st.button("⬅ Back to Admin"):
         st.session_state.page = "admin"
         st.rerun()
 
 # ==================================================
-# USER PAGE
+# USER PAGE - FIXED FILTERING
 # ==================================================
 else:
 
@@ -383,138 +381,235 @@ else:
 
     df = load_events()
     if df.empty:
-        st.info("No events available")
+        st.info("No events available. Please add events in the Admin panel.")
         st.stop()
 
-    # ---- Clean ----
-    df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce").dt.normalize()
-    df["End Date"] = pd.to_datetime(df["End Date"], errors="coerce").dt.normalize()
-    
-    # Keep only rows with valid dates
-    df = df[
-        (df["Start Date"].notna()) &
-        (df["End Date"].notna())
-    ]
-    
-    if df.empty:
-        st.info("No valid events available")
-        st.stop()
-    
-    # Get today's date for filtering
-    today = pd.Timestamp.today().normalize()
-    
-    # Show events that:
-    # 1. Start today or in the future, OR
-    # 2. Are currently ongoing (started before today and end today or in the future)
-    df["End Date"] = pd.to_datetime(df["End Date"])
-    
-    # Filter events that are either upcoming or currently ongoing
-    df = df[
-        (df["Start Date"] <= df["End Date"]) &  # Ensure valid date range
-        (
-            (df["Start Date"] >= today) |  # Future events
-            (df["End Date"] >= today)      # Ongoing events (including multi-day)
-        )
-    ]
-    
-    df = df.sort_values("Start Date")
+    # ---- Debug: Show raw data ----
+    with st.expander("🔧 Debug: Show raw data"):
+        st.write("Raw events data:")
+        st.dataframe(df)
+        st.write(f"Total events: {len(df)}")
+        if not df.empty:
+            st.write(f"Date range: {df['Start Date'].min()} to {df['End Date'].max()}")
 
-    # ---- Filters ----
-    f1, f2, f3, f4 = st.columns(4)
-    search = f1.text_input("🔍 Search")
-    program = f2.selectbox("Program", ["All"] + PROGRAMS)
-    category = f3.selectbox("Category", ["All"] + CATEGORIES)
-    dr = f4.date_input("Date Range", [])
-
-    view = st.radio("View", ["Cards", "Weekly", "Monthly", "Calendar"], horizontal=True)
-
-    if search:
-        df = df[df["Program"].str.contains(search, case=False) |
-                df["Category"].str.contains(search, case=False)]
-    if program != "All":
-        df = df[df["Program"] == program]
-    if category != "All":
-        df = df[df["Category"] == category]
-    if len(dr) == 2:
-        df = df[(df["Start Date"].dt.date >= dr[0]) &
-                (df["End Date"].dt.date <= dr[1])]
-
-    # ---- Show all events toggle ----
-    show_all = st.checkbox("Show all events (including past events)", value=False)
-    if show_all:
-        # Reload all events without date filtering
-        df = load_events()
+    # ---- Clean and prepare data ----
+    # Convert date columns
+    try:
         df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce").dt.normalize()
         df["End Date"] = pd.to_datetime(df["End Date"], errors="coerce").dt.normalize()
-        df = df[(df["Start Date"].notna()) & (df["End Date"].notna())]
-        df = df.sort_values("Start Date")
-        
-        # Reapply other filters
-        if search:
-            df = df[df["Program"].str.contains(search, case=False) |
-                    df["Category"].str.contains(search, case=False)]
-        if program != "All":
-            df = df[df["Program"] == program]
-        if category != "All":
-            df = df[df["Category"] == category]
-        if len(dr) == 2:
-            df = df[(df["Start Date"].dt.date >= dr[0]) &
-                    (df["End Date"].dt.date <= dr[1])]
+    except Exception as e:
+        st.error(f"Error parsing dates: {e}")
+        st.dataframe(df)
+        st.stop()
+    
+    # Remove rows with invalid dates
+    df = df[df["Start Date"].notna() & df["End Date"].notna()].copy()
+    
+    if df.empty:
+        st.info("No valid events with proper dates.")
+        st.stop()
+
+    # Sort by Start Date
+    df = df.sort_values("Start Date").reset_index(drop=True)
+
+    # ---- Filters ----
+    st.subheader("🔍 Filters")
+    f1, f2, f3, f4 = st.columns(4)
+    with f1:
+        search = st.text_input("Search by name")
+    with f2:
+        program = st.selectbox("Program", ["All"] + PROGRAMS)
+    with f3:
+        category = st.selectbox("Category", ["All"] + CATEGORIES)
+    with f4:
+        dr = st.date_input("Date Range", [])
+
+    # ---- Show all events toggle ----
+    show_all = st.checkbox("Show all events (including past events)", value=True)
+
+    # Apply date filtering if not showing all
+    filtered_df = df.copy()
+    
+    if not show_all:
+        today = pd.Timestamp.today().normalize()
+        # Show events that end today or in the future
+        filtered_df = filtered_df[filtered_df["End Date"] >= today].copy()
+    
+    # Apply other filters
+    if search:
+        filtered_df = filtered_df[
+            filtered_df["Program"].str.contains(search, case=False) |
+            filtered_df["Category"].str.contains(search, case=False)
+        ]
+    
+    if program != "All":
+        filtered_df = filtered_df[filtered_df["Program"] == program]
+    
+    if category != "All":
+        filtered_df = filtered_df[filtered_df["Category"] == category]
+    
+    if len(dr) == 2:
+        filtered_df = filtered_df[
+            (filtered_df["Start Date"].dt.date >= dr[0]) &
+            (filtered_df["End Date"].dt.date <= dr[1])
+        ]
+
+    # ---- View selection ----
+    st.subheader("📊 View Options")
+    view = st.radio("Select View", ["Cards", "Weekly", "Monthly", "Calendar", "Table"], 
+                   horizontal=True, index=0)
+
+    # ---- Debug: Show filtered data ----
+    with st.expander("🔧 Debug: Show filtered data"):
+        st.write(f"Filtered events: {len(filtered_df)}")
+        st.dataframe(filtered_df)
+        if not filtered_df.empty:
+            st.write(f"Filtered date range: {filtered_df['Start Date'].min()} to {filtered_df['End Date'].max()}")
 
     # ---- Export ----
-    if not df.empty:
-        st.download_button("📄 Download PDF", export_pdf(df), "events.pdf")
+    if not filtered_df.empty:
+        st.download_button(
+            "📄 Download PDF", 
+            export_pdf(filtered_df), 
+            "events.pdf",
+            help="Download all filtered events as PDF"
+        )
     else:
         st.info("No events match your filters")
 
-    # ---- Views ----
-    if df.empty:
-        st.warning("No events to display")
-    elif view == "Cards":
-        df["Month"] = df["Start Date"].dt.strftime("%B %Y")
-        for m, g in df.groupby("Month"):
-            st.markdown(f"<div class='section'>{m}</div>", unsafe_allow_html=True)
-            cols = st.columns(6)
-            for i, (_, r) in enumerate(g.iterrows()):
-                with cols[i % 6]:
-                    card(r)
+    # ---- Display events ----
+    st.divider()
+    
+    if filtered_df.empty:
+        st.warning("No events to display. Try adjusting your filters or check if events exist.")
+        
+        # Show what might be wrong
+        if not show_all and not df.empty:
+            today = pd.Timestamp.today().normalize()
+            future_events = df[df["End Date"] >= today]
+            st.write(f"You have {len(future_events)} future/ongoing events.")
+            
+            past_events = df[df["End Date"] < today]
+            if len(past_events) > 0:
+                st.write(f"You have {len(past_events)} past events. Check 'Show all events' to see them.")
+    else:
+        st.success(f"Showing {len(filtered_df)} event(s)")
+        
+        if view == "Table":
+            # Simple table view for debugging
+            display_df = filtered_df.copy()
+            display_df["Start Date"] = display_df["Start Date"].dt.strftime("%Y-%m-%d")
+            display_df["End Date"] = display_df["End Date"].dt.strftime("%Y-%m-%d")
+            st.dataframe(display_df[["Program", "Category", "Start Date", "End Date", "Start Time", "End Time", "All Day"]])
+        
+        elif view == "Cards":
+            # Group by month
+            filtered_df["Month"] = filtered_df["Start Date"].dt.strftime("%B %Y")
+            
+            for month, month_group in filtered_df.groupby("Month", sort=False):
+                st.markdown(f"<div class='section'>{month}</div>", unsafe_allow_html=True)
+                
+                # Create columns for cards
+                cols = st.columns(6)
+                for idx, (_, event) in enumerate(month_group.iterrows()):
+                    with cols[idx % 6]:
+                        card(event)
+        
+        elif view == "Weekly":
+            # Group by week
+            filtered_df["Week"] = filtered_df["Start Date"].dt.strftime("Week %U, %Y")
+            
+            for week, week_group in filtered_df.groupby("Week", sort=False):
+                st.markdown(f"<div class='section'>{week}</div>", unsafe_allow_html=True)
+                
+                cols = st.columns(3)
+                for idx, (_, event) in enumerate(week_group.iterrows()):
+                    with cols[idx % 3]:
+                        card(event)
+        
+        elif view == "Monthly":
+            # Group by month-year
+            filtered_df["MonthYear"] = filtered_df["Start Date"].dt.strftime("%B %Y")
+            
+            for month_year, month_group in filtered_df.groupby("MonthYear", sort=False):
+                st.markdown(f"<div class='section'>{month_year}</div>", unsafe_allow_html=True)
+                
+                cols = st.columns(4)
+                for idx, (_, event) in enumerate(month_group.iterrows()):
+                    with cols[idx % 4]:
+                        card(event)
+        
+        elif view == "Calendar":
+            st.subheader("📆 Calendar View")
+            
+            # Select month
+            selected_month = st.date_input("Select month to view", date.today())
+            
+            # Create calendar
+            month_start = selected_month.replace(day=1)
+            month_end = (month_start + timedelta(days=31)).replace(day=1) - timedelta(days=1)
+            
+            # Get first day of calendar (Sunday of the week containing month_start)
+            first_day = month_start - timedelta(days=month_start.weekday())
+            
+            # Create calendar grid
+            st.markdown("### " + month_start.strftime("%B %Y"))
+            
+            # Day headers
+            day_names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+            cols = st.columns(7)
+            for i, day_name in enumerate(day_names):
+                cols[i].markdown(f"**{day_name}**")
+            
+            # Calendar days
+            current_day = first_day
+            for week in range(6):  # Max 6 weeks in calendar view
+                cols = st.columns(7)
+                for day_idx in range(7):
+                    with cols[day_idx]:
+                        # Check if day is in current month
+                        is_current_month = month_start.month == current_day.month
+                        day_style = ""
+                        
+                        if current_day.date() == date.today():
+                            day_style = "border: 2px solid red; padding: 2px;"
+                        
+                        # Display day number
+                        day_text = f"<div style='{day_style}'>{current_day.day}</div>"
+                        
+                        # Get events for this day
+                        day_events = filtered_df[
+                            (filtered_df["Start Date"].dt.date <= current_day.date()) &
+                            (filtered_df["End Date"].dt.date >= current_day.date())
+                        ]
+                        
+                        if not day_events.empty:
+                            st.markdown(day_text, unsafe_allow_html=True)
+                            for _, event in day_events.iterrows():
+                                st.markdown(
+                                    f"<div class='program' title='{event['Category']}'>{event['Program']}</div>",
+                                    unsafe_allow_html=True
+                                )
+                        else:
+                            st.markdown(day_text, unsafe_allow_html=True)
+                            if is_current_month:
+                                st.write("")  # Empty space for alignment
+                    
+                    current_day += timedelta(days=1)
+                
+                # Stop if we've passed the month end
+                if current_day.date() > month_end.date():
+                    break
 
-    elif view == "Weekly":
-        df["Week"] = df["Start Date"].dt.strftime("Week %U")
-        for w, g in df.groupby("Week"):
-            st.markdown(f"<div class='section'>{w}</div>", unsafe_allow_html=True)
-            cols = st.columns(3)
-            for i, (_, r) in enumerate(g.iterrows()):
-                with cols[i % 3]:
-                    card(r)
-
-    elif view == "Monthly":
-        df["Month"] = df["Start Date"].dt.strftime("%B %Y")
-        for m, g in df.groupby("Month"):
-            st.markdown(f"<div class='section'>{m}</div>", unsafe_allow_html=True)
-            cols = st.columns(3)
-            for i, (_, r) in enumerate(g.iterrows()):
-                with cols[i % 3]:
-                    card(r)
-
-    elif view == "Calendar":
-        st.subheader("📆 Calendar View")
-        month = st.date_input("Select month", date.today()).replace(day=1)
-        start = month - timedelta(days=month.weekday())
-        days = [start + timedelta(days=i) for i in range(42)]
-        cols = st.columns(7)
-
-        for i, d in enumerate(days):
-            with cols[i % 7]:
-                day_class = "today" if d.date() == date.today() else ""
-                st.markdown(f'<div class="{day_class}">{d.strftime("%d %b")}</div>', 
-                          unsafe_allow_html=True)
-                day_events = df[
-                    (df["Start Date"].dt.date <= d.date()) & 
-                    (df["End Date"].dt.date >= d.date())
-                ]
-                for _, r in day_events.iterrows():
-                    st.markdown(
-                        f"<div class='program'>{r['Program']}</div>",
-                        unsafe_allow_html=True
-                    )
+    # ---- Statistics ----
+    st.divider()
+    if not df.empty:
+        st.subheader("📈 Statistics")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Events", len(df))
+        with col2:
+            ongoing = len(df[df["End Date"] >= pd.Timestamp.today().normalize()])
+            st.metric("Upcoming/Ongoing", ongoing)
+        with col3:
+            st.metric("Programs", df["Program"].nunique())
