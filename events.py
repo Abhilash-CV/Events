@@ -52,13 +52,13 @@ CATEGORY_PRIORITY = {
 }
 
 # ==================================================
-# SESSION STATE (SAFE)
+# SESSION STATE (SAFE FOR CLOUD)
 # ==================================================
 st.session_state.setdefault("page", "login")
 st.session_state.setdefault("role", None)
 
 # ==================================================
-# DATA FUNCTIONS (HARDENED)
+# DATA FUNCTIONS
 # ==================================================
 def load_events():
     try:
@@ -68,16 +68,16 @@ def load_events():
             columns=["Exam", "Category", "Title", "Start Date", "End Date"]
         )
 
-    # Ensure all required columns exist
+    # Ensure columns
     for col in ["Exam", "Category", "Title", "Start Date", "End Date"]:
         if col not in df.columns:
             df[col] = ""
 
-    # Force date parsing (CRITICAL FIX)
+    # Force date parsing
     df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce")
     df["End Date"] = pd.to_datetime(df["End Date"], errors="coerce")
 
-    # Drop rows with invalid dates
+    # Drop invalid date rows
     df = df.dropna(subset=["Start Date", "End Date"])
 
     return df
@@ -85,6 +85,17 @@ def load_events():
 
 def save_events(df):
     df.to_csv(DATA_FILE, index=False)
+
+
+def base_df(df):
+    """
+    Remove runtime-only columns before saving
+    """
+    keep = ["Exam", "Category", "Title", "Start Date", "End Date"]
+    for col in keep:
+        if col not in df.columns:
+            df[col] = ""
+    return df[keep].copy()
 
 
 def event_status(row):
@@ -120,7 +131,7 @@ def enrich_events(df):
 
 
 # ==================================================
-# LOAD DATA (SAFE)
+# LOAD DATA
 # ==================================================
 events_df = enrich_events(load_events())
 
@@ -146,24 +157,24 @@ if st.session_state.page == "login":
             st.rerun()
 
 # ==================================================
-# ADMIN LOGIN
+# ADMIN LOGIN PAGE
 # ==================================================
-if st.session_state.page == "admin_login":
+elif st.session_state.page == "admin_login":
 
     st.markdown("## 🔐 Admin Login")
 
     with st.form("admin_login_form"):
-        u = st.text_input("Username")
-        p = st.text_input("Password", type="password")
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
         login = st.form_submit_button("Login")
 
         if login:
-            if u == ADMIN_USERNAME and p == ADMIN_PASSWORD:
+            if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
                 st.session_state.role = "Admin"
                 st.session_state.page = "admin"
                 st.rerun()
             else:
-                st.error("Invalid credentials")
+                st.error("Invalid username or password")
 
     if st.button("⬅ Back"):
         st.session_state.page = "login"
@@ -172,10 +183,11 @@ if st.session_state.page == "admin_login":
 # ==================================================
 # ADMIN PANEL
 # ==================================================
-if st.session_state.page == "admin":
+elif st.session_state.page == "admin":
 
     st.markdown("## 🛠 Admin Panel")
 
+    # ---------- ADD EVENT ----------
     with st.expander("➕ Add New Event", expanded=True):
         with st.form("add_event_form"):
             exam = st.selectbox("Select Exam", EXAMS)
@@ -190,7 +202,7 @@ if st.session_state.page == "admin":
 
             if st.form_submit_button("Add Event"):
                 if title.strip() == "":
-                    st.error("Event description required")
+                    st.error("Event description is required")
                 else:
                     new_row = pd.DataFrame([{
                         "Exam": exam,
@@ -200,14 +212,14 @@ if st.session_state.page == "admin":
                         "End Date": end
                     }])
 
-                    clean_df = base_df(events_df)
-                    updated_df = pd.concat([clean_df, new_row], ignore_index=True)
-                    save_events(updated_df)
-            
+                    clean = base_df(events_df)
+                    updated = pd.concat([clean, new_row], ignore_index=True)
+                    save_events(updated)
+
                     st.success("Event added successfully")
                     st.rerun()
 
-
+    # ---------- VIEW / DELETE ----------
     st.subheader("📋 All Events")
 
     if events_df.empty:
@@ -220,9 +232,9 @@ if st.session_state.page == "admin":
                 st.write(f"🗓 {row['Start Date'].date()} → {row['End Date'].date()}")
                 st.write(status_badge(row["Status"]))
 
-                if st.button("❌ Delete", key=f"d{i}"):
-                    events_df = events_df.drop(i)
-                    save_events(events_df)
+                if st.button("❌ Delete", key=f"del_{i}"):
+                    clean = base_df(events_df.drop(i))
+                    save_events(clean)
                     st.rerun()
 
     if st.button("Logout"):
@@ -232,7 +244,7 @@ if st.session_state.page == "admin":
 # ==================================================
 # USER VIEW
 # ==================================================
-if st.session_state.page == "user":
+elif st.session_state.page == "user":
 
     st.markdown("## 📌 Admission Event Schedule")
 
