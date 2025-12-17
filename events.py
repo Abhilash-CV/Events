@@ -178,7 +178,7 @@ if st.session_state.page == "admin":
     for _, r in df.iterrows():
         with st.expander(f'{r["Program"]} – {r["Category"]}'):
             st.write(f'{r["Start Date"]} → {r["End Date"]}')
-            if st.button("❌ Delete", key=f'del{r["EventID"]}'):
+            if st.button("❌ Delete", key=f'del_{int(r["EventID"])}_{_}'):
                 df = df[df["EventID"] != r["EventID"]]
                 save_events(df)
                 st.rerun()
