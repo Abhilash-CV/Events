@@ -175,7 +175,8 @@ if st.session_state.page == "admin":
 
     # ---------- LIST ----------
     st.subheader("📋 Events")
-    if st.button("✏️ Edit", key=f'edit_{int(r["EventID"])}_{_}'):
+    if st.button("✏️ Edit", key=f'edit_{int(r["EventID"])}_{idx}'):
+
         st.session_state.edit_id = int(r["EventID"])
         st.session_state.page = "edit"
         st.rerun()
