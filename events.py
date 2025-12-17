@@ -39,7 +39,7 @@ st.session_state.setdefault("page", "user")
 st.session_state.setdefault("edit_id", None)
 
 # ==================================================
-# DATA
+# DATA (BACKWARD SAFE)
 # ==================================================
 def load_events():
     try:
@@ -63,12 +63,12 @@ def next_event_id(df):
 
 
 # ==================================================
-# STATUS
+# STATUS (SAFE)
 # ==================================================
 def event_status(row):
     today = pd.Timestamp.today().normalize()
-    start = pd.to_datetime(row["Start Date"])
-    end = pd.to_datetime(row["End Date"])
+    start = row["Start Date"]
+    end = row["End Date"]
 
     if end < today:
         return "Closed"
@@ -77,64 +77,64 @@ def event_status(row):
     return "Active"
 
 # ==================================================
-# STYLES (COMPACT CARDS)
+# STYLES (VERY COMPACT CARDS)
 # ==================================================
 st.markdown("""
 <style>
 .event-card {
     background:#ffffff;
-    border-radius:10px;
-    padding:10px;
+    border-radius:8px;
+    padding:8px 6px;
     text-align:center;
-    box-shadow:0 2px 8px rgba(0,0,0,.08);
-    margin-bottom:14px;
+    box-shadow:0 1px 6px rgba(0,0,0,.08);
+    margin-bottom:10px;
 }
 .event-card:hover {
-    box-shadow:0 6px 14px rgba(0,0,0,.15);
+    box-shadow:0 4px 10px rgba(0,0,0,.14);
 }
-.today { border:2px solid #000; }
+.today { border:1.5px solid #000; }
 
 .event-month {
-    font-size:11px;
+    font-size:10px;
     font-weight:700;
     color:#666;
 }
 .event-day {
-    font-size:22px;
+    font-size:20px;
     font-weight:700;
     line-height:1;
 }
 .event-category {
-    font-size:13px;
+    font-size:12px;
     font-weight:700;
-    margin-top:6px;
+    margin-top:4px;
 }
 .event-time {
-    font-size:11px;
+    font-size:10px;
     color:#555;
 }
 .program-badge {
     display:inline-block;
-    margin-top:6px;
-    padding:2px 8px;
-    font-size:11px;
+    margin-top:4px;
+    padding:1px 6px;
+    font-size:10px;
     background:#e3f2fd;
     color:#0d47a1;
-    border-radius:12px;
+    border-radius:10px;
 }
 .section-title {
-    font-size:20px;
+    font-size:18px;
     font-weight:700;
-    margin:22px 0 12px;
+    margin:18px 0 10px;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ==================================================
-# EVENT CARD (CATEGORY + PROGRAM BADGE)
+# EVENT CARD
 # ==================================================
 def render_event_card(row):
-    start = pd.to_datetime(row["Start Date"])
+    start = row["Start Date"]
     is_today = start.date() == date.today()
 
     month = start.strftime("%b").upper()
@@ -143,7 +143,9 @@ def render_event_card(row):
     if str(row.get("All Day", "")).lower() == "true":
         time_html = "<div class='event-time'>All Day</div>"
     else:
-        time_html = f"<div class='event-time'>{row.get('Start Time','')} – {row.get('End Time','')}</div>"
+        st_time = row.get("Start Time", "")
+        en_time = row.get("End Time", "")
+        time_html = f"<div class='event-time'>{st_time} – {en_time}</div>" if st_time or en_time else ""
 
     cls = "event-card today" if is_today else "event-card"
 
@@ -180,25 +182,29 @@ if st.session_state.page == "admin_login":
         st.rerun()
 
 # ==================================================
-# ADMIN PANEL (UNCHANGED CORE)
+# ADMIN PANEL
 # ==================================================
 elif st.session_state.page == "admin":
 
     st.subheader("🛠 Admin Panel")
 
     df = load_events()
+
+    # ---- SAFE DATE PARSING ----
+    df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce")
+    df["End Date"] = pd.to_datetime(df["End Date"], errors="coerce")
+    df = df.dropna(subset=["Start Date", "End Date"])
+
     if not df.empty:
-        df["Start Date"] = pd.to_datetime(df["Start Date"])
-        df["End Date"] = pd.to_datetime(df["End Date"])
         df["Status"] = df.apply(event_status, axis=1)
 
-    # ---------- SUMMARY ----------
+    # ---- SUMMARY ----
     c1, c2, c3 = st.columns(3)
     c1.metric("Total Events", len(df))
-    c2.metric("Today", len(df[df["Start Date"].dt.date == date.today()]) if not df.empty else 0)
-    c3.metric("Upcoming", len(df[df["Status"] == "Upcoming"]) if not df.empty else 0)
+    c2.metric("Today", len(df[df["Start Date"].dt.date == date.today()]))
+    c3.metric("Upcoming", len(df[df["Status"] == "Upcoming"]))
 
-    # ---------- ADD EVENT ----------
+    # ---- ADD EVENT ----
     with st.expander("➕ Add Event", expanded=True):
         with st.form("add"):
             program = st.selectbox("Program", PROGRAMS)
@@ -236,7 +242,7 @@ elif st.session_state.page == "admin":
             save_events(df)
             st.rerun()
 
-    # ---------- MANAGE EVENTS ----------
+    # ---- MANAGE EVENTS ----
     st.divider()
     st.subheader("📋 Manage Events")
 
@@ -245,21 +251,15 @@ elif st.session_state.page == "admin":
     else:
         for _, r in df.sort_values("Start Date").iterrows():
             with st.expander(f"{r['Program']} – {r['Title']}"):
-                st.write(f"📅 {r['Start Date']} → {r['End Date']}")
-                if r["All Day"] == "True":
-                    st.write("⏱️ All Day")
-                else:
-                    st.write(f"⏱️ {r.get('Start Time','')} – {r.get('End Time','')}")
+                st.write(f"📅 {r['Start Date'].date()} → {r['End Date'].date()}")
+                st.write("⏱️ All Day" if r["All Day"] == "True"
+                         else f"⏱️ {r.get('Start Time','')} – {r.get('End Time','')}")
 
                 c1, c2 = st.columns(2)
-
-                # EDIT
                 if c1.button("✏️ Edit", key=f"edit_{r['EventID']}"):
                     st.session_state.edit_id = r["EventID"]
                     st.session_state.page = "edit"
                     st.rerun()
-
-                # DELETE
                 if c2.button("❌ Delete", key=f"del_{r['EventID']}"):
                     df = df[df["EventID"] != r["EventID"]]
                     save_events(df)
@@ -275,6 +275,9 @@ elif st.session_state.page == "admin":
 elif st.session_state.page == "edit":
 
     df = load_events()
+    df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce")
+    df["End Date"] = pd.to_datetime(df["End Date"], errors="coerce")
+
     e = df[df["EventID"] == st.session_state.edit_id].iloc[0]
 
     st.subheader("✏️ Edit Event")
@@ -285,22 +288,22 @@ elif st.session_state.page == "edit":
         title = st.text_input("Title", value=e["Title"])
 
         c1, c2 = st.columns(2)
-        start_date = c1.date_input("Start Date", value=pd.to_datetime(e["Start Date"]))
-        end_date = c2.date_input("End Date", value=pd.to_datetime(e["End Date"]))
+        start_date = c1.date_input("Start Date", value=e["Start Date"])
+        end_date = c2.date_input("End Date", value=e["End Date"])
 
         all_day = st.checkbox("All-day Event", value=(e["All Day"] == "True"))
 
         if not all_day:
             t1, t2 = st.columns(2)
-            start_time = t1.time_input("Start Time", pd.to_datetime(e["Start Time"], errors="coerce").time() if e["Start Time"] else time(10,0))
-            end_time = t2.time_input("End Time", pd.to_datetime(e["End Time"], errors="coerce").time() if e["End Time"] else time(17,0))
+            start_time = t1.time_input("Start Time", time(10, 0))
+            end_time = t2.time_input("End Time", time(17, 0))
         else:
             start_time = end_time = None
 
         update = st.form_submit_button("Update")
 
     if update:
-        df.loc[df["EventID"] == e["EventID"], :] = [
+        df.loc[df["EventID"] == e["EventID"]] = [
             e["EventID"], program, category, title,
             start_date, end_date,
             start_time.strftime("%I:%M %p") if start_time else "",
@@ -310,7 +313,6 @@ elif st.session_state.page == "edit":
         save_events(df)
         st.session_state.page = "admin"
         st.rerun()
-
 
 # ==================================================
 # USER LANDING PAGE
@@ -327,62 +329,54 @@ else:
 
     program = st.selectbox("Filter by Program", ["All Programs"] + PROGRAMS)
 
-    view = st.radio(
-        "View Mode",
-        ["Cards", "Weekly", "Monthly"],
-        horizontal=True
-    )
+    view = st.radio("View", ["Cards", "Weekly", "Monthly"], horizontal=True)
 
     df = load_events()
 
-    if df.empty:
-        st.info("No events available")
-    else:
-        df["Start Date"] = pd.to_datetime(df["Start Date"])
-        df["End Date"] = pd.to_datetime(df["End Date"])
-        df["Status"] = df.apply(event_status, axis=1)
-        df = df[df["Status"] != "Closed"]
+    df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce")
+    df["End Date"] = pd.to_datetime(df["End Date"], errors="coerce")
+    df = df.dropna(subset=["Start Date", "End Date"])
+    df["Status"] = df.apply(event_status, axis=1)
+    df = df[df["Status"] != "Closed"]
 
-        if program != "All Programs":
-            df = df[df["Program"] == program]
+    if program != "All Programs":
+        df = df[df["Program"] == program]
 
-        df = df.sort_values("Start Date")
+    df = df.sort_values("Start Date")
 
-        # ---------- TODAY PIN ----------
-        today_df = df[df["Start Date"].dt.date == date.today()]
-        future_df = df[df["Start Date"].dt.date != date.today()]
+    today_df = df[df["Start Date"].dt.date == date.today()]
+    future_df = df[df["Start Date"].dt.date != date.today()]
 
-        if not today_df.empty:
-            st.markdown("<div class='section-title'>📌 Today</div>", unsafe_allow_html=True)
+    if not today_df.empty:
+        st.markdown("<div class='section-title'>📌 Today</div>", unsafe_allow_html=True)
+        cols = st.columns(3)
+        for i, (_, r) in enumerate(today_df.iterrows()):
+            with cols[i % 3]:
+                render_event_card(r)
+
+    if view == "Cards":
+        future_df["Month"] = future_df["Start Date"].dt.strftime("%B %Y")
+        for m, grp in future_df.groupby("Month"):
+            st.markdown(f"<div class='section-title'>{m}</div>", unsafe_allow_html=True)
             cols = st.columns(3)
-            for i, (_, r) in enumerate(today_df.iterrows()):
+            for i, (_, r) in enumerate(grp.iterrows()):
                 with cols[i % 3]:
                     render_event_card(r)
 
-        # ---------- VIEW MODES ----------
-        if view == "Cards":
-            future_df["Month"] = future_df["Start Date"].dt.strftime("%B %Y")
-            for m, grp in future_df.groupby("Month"):
-                st.markdown(f"<div class='section-title'>{m}</div>", unsafe_allow_html=True)
-                cols = st.columns(3)
-                for i, (_, r) in enumerate(grp.iterrows()):
-                    with cols[i % 3]:
-                        render_event_card(r)
+    elif view == "Weekly":
+        future_df["Week"] = future_df["Start Date"].dt.strftime("Week %U")
+        for w, grp in future_df.groupby("Week"):
+            st.markdown(f"<div class='section-title'>{w}</div>", unsafe_allow_html=True)
+            cols = st.columns(3)
+            for i, (_, r) in enumerate(grp.iterrows()):
+                with cols[i % 3]:
+                    render_event_card(r)
 
-        elif view == "Weekly":
-            future_df["Week"] = future_df["Start Date"].dt.strftime("Week %U")
-            for w, grp in future_df.groupby("Week"):
-                st.markdown(f"<div class='section-title'>{w}</div>", unsafe_allow_html=True)
-                cols = st.columns(3)
-                for i, (_, r) in enumerate(grp.iterrows()):
-                    with cols[i % 3]:
-                        render_event_card(r)
-
-        elif view == "Monthly":
-            future_df["Month"] = future_df["Start Date"].dt.strftime("%B %Y")
-            for m, grp in future_df.groupby("Month"):
-                st.markdown(f"<div class='section-title'>{m}</div>", unsafe_allow_html=True)
-                cols = st.columns(3)
-                for i, (_, r) in enumerate(grp.iterrows()):
-                    with cols[i % 3]:
-                        render_event_card(r)
+    elif view == "Monthly":
+        future_df["Month"] = future_df["Start Date"].dt.strftime("%B %Y")
+        for m, grp in future_df.groupby("Month"):
+            st.markdown(f"<div class='section-title'>{m}</div>", unsafe_allow_html=True)
+            cols = st.columns(3)
+            for i, (_, r) in enumerate(grp.iterrows()):
+                with cols[i % 3]:
+                    render_event_card(r)
