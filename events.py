@@ -167,51 +167,62 @@ elif st.session_state.page == "admin":
                 st.rerun()
 
     # ---------- MANAGE EVENTS (RAW, ALL ROWS) ----------
-    df = load_events()
-
     st.divider()
     st.subheader("📋 Manage Events")
-
+    
+    df = load_events()
+    
     if df.empty:
         st.info("No events available")
     else:
         for _, r in df.iterrows():
-            with st.container(border=True):
-                st.markdown(f"### {r['Exam']} – {r['Category']}")
+    
+            with st.expander(
+                f"{r['Exam']} – {r['Category']} (Event ID {r['EventID']})",
+                expanded=True
+            ):
                 st.write(r["Title"])
                 st.write(f"{r['Start Date'].date()} → {r['End Date'].date()}")
-
+    
                 c1, c2, c3, c4 = st.columns(4)
-
+    
                 # Move Up
-                if c1.button("⬆", key=f"up{r['EventID']}"):
-                    idx = df.index[df["EventID"] == r["EventID"]][0]
+                if c1.button("⬆ Move Up", key=f"up_{r['EventID']}"):
+                    df2 = load_events()
+                    idx = df2.index[df2["EventID"] == r["EventID"]][0]
                     if idx > 0:
-                        df.loc[idx, "Order"], df.loc[idx-1, "Order"] = \
-                            df.loc[idx-1, "Order"], df.loc[idx, "Order"]
-                        save_events(df)
+                        df2.loc[idx, "Order"], df2.loc[idx - 1, "Order"] = (
+                            df2.loc[idx - 1, "Order"],
+                            df2.loc[idx, "Order"]
+                        )
+                        save_events(df2)
                         st.rerun()
-
+    
                 # Move Down
-                if c2.button("⬇", key=f"dn{r['EventID']}"):
-                    idx = df.index[df["EventID"] == r["EventID"]][0]
-                    if idx < len(df)-1:
-                        df.loc[idx, "Order"], df.loc[idx+1, "Order"] = \
-                            df.loc[idx+1, "Order"], df.loc[idx, "Order"]
-                        save_events(df)
+                if c2.button("⬇ Move Down", key=f"dn_{r['EventID']}"):
+                    df2 = load_events()
+                    idx = df2.index[df2["EventID"] == r["EventID"]][0]
+                    if idx < len(df2) - 1:
+                        df2.loc[idx, "Order"], df2.loc[idx + 1, "Order"] = (
+                            df2.loc[idx + 1, "Order"],
+                            df2.loc[idx, "Order"]
+                        )
+                        save_events(df2)
                         st.rerun()
-
+    
                 # Edit
-                if c3.button("✏️ Edit", key=f"ed{r['EventID']}"):
+                if c3.button("✏️ Edit", key=f"ed_{r['EventID']}"):
                     st.session_state.edit_id = r["EventID"]
                     st.session_state.page = "edit"
                     st.rerun()
-
+    
                 # Delete
-                if c4.button("❌ Delete", key=f"dl{r['EventID']}"):
-                    df = df[df["EventID"] != r["EventID"]]
-                    save_events(df)
+                if c4.button("❌ Delete", key=f"dl_{r['EventID']}"):
+                    df2 = load_events()
+                    df2 = df2[df2["EventID"] != r["EventID"]]
+                    save_events(df2)
                     st.rerun()
+
 
     if st.button("Logout"):
         st.session_state.clear()
