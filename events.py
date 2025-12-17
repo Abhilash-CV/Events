@@ -247,9 +247,9 @@ elif st.session_state.page == "admin":
                 ignore_index=True
             )
 
-save_events(raw_df)
-st.success("Event added successfully")
-st.rerun()
+            save_events(raw_df)
+            st.success("Event added successfully")
+            st.rerun()
 
 
     # ---- MANAGE EVENTS ----
