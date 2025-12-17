@@ -179,49 +179,37 @@ elif st.session_state.page == "admin":
                 st.rerun()
 
     # ---------- MANAGE EVENTS (ALL ROWS) ----------
-    df = load_events()
-
-    st.divider()
-    st.subheader("📋 Manage Events")
-
-    if df.empty:
-        st.info("No events available")
-    else:
-        for _, r in df.iterrows():
-            with st.expander(
-                f"{r['Exam']} – {r['Category']} (Event ID {r['EventID']})",
-                expanded=True
-            ):
-                st.write(r["Title"])
-                st.write(f"{r['Start Date'].date()} → {r['End Date'].date()}")
-
-                c1, c2, c3, c4 = st.columns(4)
-
-                if c1.button("⬆ Move Up", key=f"up_{r['EventID']}"):
-                    idx = df.index[df["EventID"] == r["EventID"]][0]
-                    if idx > 0:
-                        df.loc[idx, "Order"], df.loc[idx-1, "Order"] = \
-                            df.loc[idx-1, "Order"], df.loc[idx, "Order"]
-                        save_events(df)
-                        st.rerun()
-
-                if c2.button("⬇ Move Down", key=f"dn_{r['EventID']}"):
-                    idx = df.index[df["EventID"] == r["EventID"]][0]
-                    if idx < len(df)-1:
-                        df.loc[idx, "Order"], df.loc[idx+1, "Order"] = \
-                            df.loc[idx+1, "Order"], df.loc[idx, "Order"]
-                        save_events(df)
-                        st.rerun()
-
-                if c3.button("✏️ Edit", key=f"ed_{r['EventID']}"):
-                    st.session_state.edit_id = r["EventID"]
-                    st.session_state.page = "edit"
-                    st.rerun()
-
-                if c4.button("❌ Delete", key=f"dl_{r['EventID']}"):
-                    df2 = df[df["EventID"] != r["EventID"]]
-                    save_events(df2)
-                    st.rerun()
+    def load_events():
+        try:
+            df = pd.read_csv(DATA_FILE)
+        except FileNotFoundError:
+            return pd.DataFrame(
+                columns=["EventID", "Order", "Exam", "Category", "Title", "Start Date", "End Date"]
+            )
+    
+        # Ensure columns exist
+        for col in ["EventID", "Order", "Exam", "Category", "Title", "Start Date", "End Date"]:
+            if col not in df.columns:
+                df[col] = None
+    
+        # Dates
+        df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce")
+        df["End Date"] = pd.to_datetime(df["End Date"], errors="coerce")
+    
+        # 🔑 FIX 1: EventID — auto assign if missing / invalid
+        df["EventID"] = pd.to_numeric(df["EventID"], errors="coerce")
+        if df["EventID"].isna().any():
+            df["EventID"] = range(1, len(df) + 1)
+    
+        # 🔑 FIX 2: Order — auto assign if missing
+        df["Order"] = pd.to_numeric(df["Order"], errors="coerce")
+        if df["Order"].isna().any():
+            df["Order"] = range(1, len(df) + 1)
+    
+        # Drop only rows that are truly broken
+        df = df.dropna(subset=["Start Date", "End Date"])
+    
+        return df.sort_values("Order").reset_index(drop=True)
 
     if st.button("Logout"):
         st.session_state.clear()
