@@ -168,6 +168,7 @@ if st.session_state.page == "admin":
         df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
         save_events(df)
         st.success("Event added")
+        st.session_state.page = "user" 
         st.rerun()
 
     st.subheader("📋 Events")
@@ -256,10 +257,18 @@ else:
         st.stop()
 
     # ---- Clean ----
-    df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce")
-    df["End Date"] = pd.to_datetime(df["End Date"], errors="coerce")
-    df = df.dropna(subset=["Start Date","End Date"])
-    df = df[df["End Date"].dt.date >= date.today()]
+    df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce").dt.normalize()
+    df["End Date"] = pd.to_datetime(df["End Date"], errors="coerce").dt.normalize()
+    
+    # KEEP rows with valid dates OR same-day events
+    df = df[
+        (df["Start Date"].notna()) &
+        (df["End Date"].notna())
+    ]
+    
+    # Show today + future events
+    df = df[df["End Date"] >= pd.Timestamp.today().normalize()]
+
     df = df.sort_values("Start Date")
 
     # ---- Filters ----
