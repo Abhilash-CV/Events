@@ -60,13 +60,14 @@ st.markdown("""
 <style>
 .card {
   background: #95d1fc;
-  border-radius: 4px;
-  padding: 3px;
+  border-radius: 3px;
+  padding: 2px 3px;
   text-align: center;
-  box-shadow: 0 1px 6px rgba(0,0,0,.08);
-  margin-bottom: 4px;
-  color: #0b3558; /* dark text for contrast */
+  box-shadow: 0 0.5px 3px rgba(0,0,0,.08);
+  margin-bottom: 3px;
+  color: #0b3558;
 }
+
 .card:hover {
   box-shadow: 0 4px 12px rgba(0,0,0,.18);
   transform: translateY(-2px);
