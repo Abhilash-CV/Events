@@ -199,9 +199,14 @@ if st.session_state.page == "admin":
                         "Start Date": start,
                         "End Date": end
                     }])
-                    save_events(pd.concat([events_df, new_row], ignore_index=True))
-                    st.success("Event added")
+
+                    clean_df = base_df(events_df)
+                    updated_df = pd.concat([clean_df, new_row], ignore_index=True)
+                    save_events(updated_df)
+            
+                    st.success("Event added successfully")
                     st.rerun()
+
 
     st.subheader("📋 All Events")
 
