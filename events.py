@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import date
+from datetime import date, time
 
 # --------------------------------------------------
 # CONFIG
@@ -11,7 +11,7 @@ DATA_FILE = "events.csv"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin@123"
 
-EXAMS = [
+PROGRAMS = [
     "KEAM", "LLB 3 Year", "LLB 5 Year", "LLM",
     "PG Ayurveda", "PG Homoeo", "PG Nursing"
 ]
@@ -37,17 +37,18 @@ CATEGORY_COLORS = {
 }
 
 BASE_COLUMNS = [
-    "EventID", "Exam", "Category", "Title", "Start Date", "End Date"
+    "EventID", "Program", "Category", "Title",
+    "Start Date", "End Date", "Start Time", "End Time"
 ]
 
 # --------------------------------------------------
-# SESSION STATE
+# SESSION
 # --------------------------------------------------
-st.session_state.setdefault("page", "login")
+st.session_state.setdefault("page", "user")
 st.session_state.setdefault("edit_id", None)
 
 # --------------------------------------------------
-# DATA FUNCTIONS
+# DATA
 # --------------------------------------------------
 def load_events():
     try:
@@ -80,88 +81,58 @@ def event_status(row):
 
 
 # --------------------------------------------------
-# GLOBAL STYLES (POSTER FEEL)
+# STYLES
 # --------------------------------------------------
 st.markdown("""
 <style>
 .event-card {
-    background: #ffffff;
-    border-radius: 18px;
-    padding: 20px;
-    text-align: center;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
-    transition: transform 0.25s ease, box-shadow 0.25s ease;
-    margin-bottom: 24px;
+    background:white;
+    border-radius:18px;
+    padding:20px;
+    text-align:center;
+    box-shadow:0 8px 20px rgba(0,0,0,.08);
+    transition:.25s;
+    margin-bottom:24px;
 }
 .event-card:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 14px 28px rgba(0,0,0,0.15);
+    transform:translateY(-6px);
+    box-shadow:0 16px 32px rgba(0,0,0,.15);
 }
-.today {
-    border: 3px solid #000;
-}
+.today { border:3px solid black; }
 .month-header {
-    font-size: 26px;
-    font-weight: 800;
-    margin: 30px 0 20px;
-}
-@media (max-width: 768px) {
-    .block-container {
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
+    font-size:26px;
+    font-weight:800;
+    margin:30px 0 20px;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # --------------------------------------------------
-# EVENT CARD
+# CARD
 # --------------------------------------------------
-def render_event_card(event):
-    start = pd.to_datetime(event["Start Date"])
-    end = pd.to_datetime(event["End Date"])
-
-    is_today = start.date() == date.today()
+def render_event_card(row):
+    start = pd.to_datetime(row["Start Date"])
     month = start.strftime("%b").upper()
     day = start.strftime("%d")
-    time = f"{start.strftime('%I:%M %p')} – {end.strftime('%I:%M %p')}"
-    title = event["Title"]
-    color = CATEGORY_COLORS.get(event["Category"], "#333")
+    today_cls = "today" if start.date() == date.today() else ""
+    color = CATEGORY_COLORS.get(row["Category"], "#333")
 
-    cls = "event-card today" if is_today else "event-card"
-
-    st.markdown(
-        f"""
-        <div class="{cls}">
-            <div style="color:{color}; font-weight:700;">{month}</div>
-            <div style="font-size:44px; font-weight:800;">{day}</div>
-            <div style="font-size:13px; color:#666;">{time}</div>
-            <div style="margin-top:10px; font-weight:600;">{title}</div>
+    st.markdown(f"""
+    <div class="event-card {today_cls}">
+        <div style="color:{color}; font-weight:700">{month}</div>
+        <div style="font-size:42px; font-weight:800">{day}</div>
+        <div style="font-size:13px;color:#666">
+            {row["Start Time"]} – {row["End Time"]}
         </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-# --------------------------------------------------
-# LOGIN PAGE
-# --------------------------------------------------
-if st.session_state.page == "login":
-
-    st.title("📢 Admission Event Notifications")
-
-    c1, c2 = st.columns(2)
-    if c1.button("🔐 Login as Admin", use_container_width=True):
-        st.session_state.page = "admin_login"
-        st.rerun()
-
-    if c2.button("👤 Continue as User", use_container_width=True):
-        st.session_state.page = "user"
-        st.rerun()
+        <div style="margin-top:10px;font-weight:600">{row["Title"]}</div>
+        <div style="font-size:12px;color:#888">{row["Program"]}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # --------------------------------------------------
 # ADMIN LOGIN
 # --------------------------------------------------
-elif st.session_state.page == "admin_login":
+if st.session_state.page == "admin_login":
 
     st.subheader("🔐 Admin Login")
 
@@ -177,11 +148,11 @@ elif st.session_state.page == "admin_login":
         st.error("Invalid credentials")
 
     if st.button("⬅ Back"):
-        st.session_state.page = "login"
+        st.session_state.page = "user"
         st.rerun()
 
 # --------------------------------------------------
-# ADMIN PANEL (UNCHANGED CORE)
+# ADMIN PANEL
 # --------------------------------------------------
 elif st.session_state.page == "admin":
 
@@ -189,39 +160,56 @@ elif st.session_state.page == "admin":
 
     with st.expander("➕ Add Event", expanded=True):
         with st.form("add"):
-            exam = st.selectbox("Exam", EXAMS)
+            program = st.selectbox("Program", PROGRAMS)
             category = st.selectbox("Category", EVENT_CATEGORIES)
             title = st.text_input("Event Description")
+
             c1, c2 = st.columns(2)
-            start = c1.date_input("Start Date")
-            end = c2.date_input("End Date", min_value=start)
+            start_date = c1.date_input("Start Date")
+            end_date = c2.date_input("End Date", min_value=start_date)
+
+            t1, t2 = st.columns(2)
+            start_time = t1.time_input("Start Time", time(10, 0))
+            end_time = t2.time_input("End Time", time(17, 0))
+
             add = st.form_submit_button("Add Event")
 
         if add and title.strip():
             df = load_events()
             df = pd.concat([df, pd.DataFrame([{
                 "EventID": next_event_id(df),
-                "Exam": exam,
+                "Program": program,
                 "Category": category,
                 "Title": title,
-                "Start Date": start,
-                "End Date": end
+                "Start Date": start_date,
+                "End Date": end_date,
+                "Start Time": start_time.strftime("%I:%M %p"),
+                "End Time": end_time.strftime("%I:%M %p")
             }])], ignore_index=True)
             save_events(df)
             st.rerun()
 
     if st.button("Logout"):
-        st.session_state.clear()
+        st.session_state.page = "user"
         st.rerun()
 
 # --------------------------------------------------
-# USER VIEW (FULL FEATURED)
+# USER LANDING PAGE (DEFAULT)
 # --------------------------------------------------
-elif st.session_state.page == "user":
+else:
+
+    col1, col2 = st.columns([8, 2])
+    with col2:
+        if st.button("🔐 Admin Login"):
+            st.session_state.page = "admin_login"
+            st.rerun()
 
     st.markdown("## 📅 Upcoming Events")
 
-    exam = st.selectbox("Select Exam", EXAMS)
+    program = st.selectbox(
+        "Filter by Program",
+        ["All Programs"] + PROGRAMS
+    )
 
     df = load_events()
 
@@ -232,22 +220,17 @@ elif st.session_state.page == "user":
         df["End Date"] = pd.to_datetime(df["End Date"])
         df["Status"] = df.apply(event_status, axis=1)
 
-        df = df[(df["Exam"] == exam) & (df["Status"] != "Closed")]
+        df = df[df["Status"] != "Closed"]
+
+        if program != "All Programs":
+            df = df[df["Program"] == program]
+
         df = df.sort_values("Start Date")
+        df["Month"] = df["Start Date"].dt.strftime("%B")
 
-        if df.empty:
-            st.info("No upcoming events")
-        else:
-            df["Month"] = df["Start Date"].dt.strftime("%B")
-
-            for month, group in df.groupby("Month"):
-                st.markdown(f"<div class='month-header'>{month}</div>", unsafe_allow_html=True)
-
-                cols = st.columns(3)
-                for i, (_, row) in enumerate(group.iterrows()):
-                    with cols[i % 3]:
-                        render_event_card(row)
-
-    if st.button("Exit"):
-        st.session_state.clear()
-        st.rerun()
+        for month, grp in df.groupby("Month"):
+            st.markdown(f"<div class='month-header'>{month}</div>", unsafe_allow_html=True)
+            cols = st.columns(3)
+            for i, (_, row) in enumerate(grp.iterrows()):
+                with cols[i % 3]:
+                    render_event_card(row)
