@@ -82,7 +82,7 @@ if st.session_state.role is None:
 
     else:
         st.session_state.role = "User"
-        st.rerun()
+        st.experimental_rerun()
 
 # --------------------------------------------------
 # LOAD & CLEAN DATA
@@ -140,11 +140,11 @@ if st.session_state.role == "Admin":
                 if st.button("❌ Delete", key=f"del_{idx}"):
                     events_df = events_df.drop(idx)
                     save_events(events_df)
-                    st.rerun()
+                    st.experimental_rerun()
 
     if st.button("Logout"):
         st.session_state.role = None
-        st.rerun()
+        st.experimental_rerun()
 
 # --------------------------------------------------
 # USER VIEW
@@ -172,4 +172,4 @@ if st.session_state.role == "User":
 
     if st.button("Exit"):
         st.session_state.role = None
-        st.rerun()
+        st.experimental_rerun()
