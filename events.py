@@ -188,15 +188,17 @@ elif st.session_state.page == "admin":
 
     st.subheader("🛠 Admin Panel")
 
-    df = load_events()
+    raw_df = load_events()   # keep raw data for saving
 
-    # ---- SAFE DATE PARSING ----
+    df = raw_df.copy()      # cleaned copy ONLY for display
+    
     df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce")
     df["End Date"] = pd.to_datetime(df["End Date"], errors="coerce")
     df = df.dropna(subset=["Start Date", "End Date"])
-
+    
     if not df.empty:
         df["Status"] = df.apply(event_status, axis=1)
+
 
     # ---- SUMMARY ----
     c1, c2, c3 = st.columns(3)
@@ -238,9 +240,17 @@ elif st.session_state.page == "admin":
                 "End Time": end_time.strftime("%I:%M %p") if end_time else "",
                 "All Day": str(all_day)
             }
-            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-            save_events(df)
-            st.rerun()
+            raw_df = load_events()  # always append to RAW data
+
+            raw_df = pd.concat(
+                [raw_df, pd.DataFrame([new_row])],
+                ignore_index=True
+            )
+
+save_events(raw_df)
+st.success("Event added successfully")
+st.rerun()
+
 
     # ---- MANAGE EVENTS ----
     st.divider()
