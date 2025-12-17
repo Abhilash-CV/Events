@@ -267,7 +267,13 @@ else:
     ]
     
     # Show today + future events
-    df = df[df["End Date"] >= pd.Timestamp.today().normalize()]
+    today = pd.Timestamp.today().normalize()
+
+    df = df[
+        (df["Start Date"] <= today) |
+        (df["End Date"] >= today)
+    ]
+
 
     df = df.sort_values("Start Date")
 
