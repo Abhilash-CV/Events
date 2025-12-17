@@ -61,13 +61,18 @@ def next_event_id(df):
 # STATUS (USER VIEW ONLY)
 # --------------------------------------------------
 def event_status(row):
-    today = date.today()
-    if row["End Date"] < today:
+    today = pd.Timestamp.today().normalize()
+
+    end_date = pd.to_datetime(row["End Date"])
+    start_date = pd.to_datetime(row["Start Date"])
+
+    if end_date < today:
         return "Closed"
-    elif row["Start Date"] > today:
+    elif start_date > today:
         return "Upcoming"
     else:
         return "Active"
+
 
 
 # --------------------------------------------------
