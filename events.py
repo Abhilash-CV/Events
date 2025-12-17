@@ -67,7 +67,11 @@ st.markdown("""
   margin-bottom: 10px;
   color: #0b3558; /* dark text for contrast */
 }
-
+.card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,.18);
+  transform: translateY(-2px);
+  transition: all 0.2s ease-in-out;
+}
 .today {border:1.5px solid #000;}
 .month {font-size:10px;font-weight:700;color:#666;}
 .day {font-size:20px;font-weight:700;}
