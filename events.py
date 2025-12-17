@@ -204,16 +204,23 @@ elif st.session_state.page == "edit":
         update = st.form_submit_button("Update")
 
     if update:
-        df.loc[st.session_state.edit_idx] = [
-            r["EventID"], program, category,
-            sd, ed,
-            stime.strftime("%I:%M %p") if stime else "",
-            etime.strftime("%I:%M %p") if etime else "",
-            str(allday)
-        ]
+        df.at[st.session_state.edit_idx, "Program"] = program
+        df.at[st.session_state.edit_idx, "Category"] = category
+        df.at[st.session_state.edit_idx, "Start Date"] = sd
+        df.at[st.session_state.edit_idx, "End Date"] = ed
+        df.at[st.session_state.edit_idx, "Start Time"] = (
+            stime.strftime("%I:%M %p") if stime else ""
+        )
+        df.at[st.session_state.edit_idx, "End Time"] = (
+            etime.strftime("%I:%M %p") if etime else ""
+        )
+        df.at[st.session_state.edit_idx, "All Day"] = str(allday)
+    
         save_events(df)
+        st.success("Event updated")
         st.session_state.page = "admin"
         st.rerun()
+
 
     if st.button("⬅ Back"):
         st.session_state.page = "admin"
