@@ -6,7 +6,6 @@ from datetime import date, time
 # CONFIG
 # ==================================================
 st.set_page_config(page_title="Admission Events", layout="wide")
-
 DATA_FILE = "events.csv"
 
 PROGRAMS = [
@@ -34,10 +33,10 @@ COLUMNS = [
 # SESSION
 # ==================================================
 st.session_state.setdefault("page", "user")
-st.session_state.setdefault("edit_id", None)
+st.session_state.setdefault("edit_idx", None)
 
 # ==================================================
-# DATA LAYER (NO CLEANING HERE)
+# DATA
 # ==================================================
 def load_events():
     try:
@@ -45,59 +44,27 @@ def load_events():
     except FileNotFoundError:
         return pd.DataFrame(columns=COLUMNS)
 
-
 def save_events(df):
     df.to_csv(DATA_FILE, index=False)
-
 
 def next_id(df):
     return 1 if df.empty else int(df["EventID"].max()) + 1
 
-
 # ==================================================
-# STATUS (DISPLAY ONLY)
-# ==================================================
-def status(start, end):
-    today = date.today()
-    if end < today:
-        return "Closed"
-    elif start > today:
-        return "Upcoming"
-    return "Active"
-
-
-# ==================================================
-# STYLES (COMPACT)
+# STYLES
 # ==================================================
 st.markdown("""
 <style>
-.card {
-    background:white;
-    border-radius:8px;
-    padding:8px;
-    text-align:center;
-    box-shadow:0 1px 6px rgba(0,0,0,.08);
-    margin-bottom:10px;
-}
-.today { border:1.5px solid black; }
-.month { font-size:10px; font-weight:700; color:#666; }
-.day { font-size:20px; font-weight:700; }
-.cat { font-size:12px; font-weight:700; margin-top:4px; }
-.time { font-size:10px; color:#555; }
-.program {
-    margin-top:4px;
-    font-size:10px;
-    background:#e3f2fd;
-    color:#0d47a1;
-    border-radius:10px;
-    padding:1px 6px;
-    display:inline-block;
-}
-.section {
-    font-size:18px;
-    font-weight:700;
-    margin:18px 0 10px;
-}
+.card {background:#fff;border-radius:8px;padding:8px;text-align:center;
+box-shadow:0 1px 6px rgba(0,0,0,.08);margin-bottom:10px;}
+.today {border:1.5px solid #000;}
+.month {font-size:10px;font-weight:700;color:#666;}
+.day {font-size:20px;font-weight:700;}
+.cat {font-size:12px;font-weight:700;margin-top:4px;}
+.time {font-size:10px;color:#555;}
+.program {margin-top:4px;font-size:10px;background:#e3f2fd;color:#0d47a1;
+border-radius:10px;padding:1px 6px;display:inline-block;}
+.section {font-size:18px;font-weight:700;margin:18px 0 10px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -106,9 +73,7 @@ st.markdown("""
 # ==================================================
 def card(r):
     s = pd.to_datetime(r["Start Date"])
-    e = pd.to_datetime(r["End Date"])
     is_today = s.date() == date.today()
-
     cls = "card today" if is_today else "card"
 
     time_html = "All Day" if r["All Day"] == "True" else f'{r["Start Time"]} – {r["End Time"]}'
@@ -124,25 +89,17 @@ def card(r):
     """, unsafe_allow_html=True)
 
 # ==================================================
-# ADMIN
+# ADMIN PAGE
 # ==================================================
 if st.session_state.page == "admin":
 
     st.header("🛠 Admin Panel")
-
     df = load_events()
 
-    # ---------- SUMMARY ----------
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total", len(df))
-    c2.metric("Today", len(df[pd.to_datetime(df["Start Date"], errors="coerce").dt.date == date.today()]))
-    c3.metric("Upcoming", len(df[pd.to_datetime(df["Start Date"], errors="coerce").dt.date > date.today()]))
-
-    # ---------- ADD ----------
-    with st.form("add"):
+    # ---------- ADD EVENT ----------
+    with st.form("add_event"):
         program = st.selectbox("Program", PROGRAMS)
         category = st.selectbox("Category", CATEGORIES)
-
         c1, c2 = st.columns(2)
         sd = c1.date_input("Start Date")
         ed = c2.date_input("End Date", min_value=sd)
@@ -150,8 +107,8 @@ if st.session_state.page == "admin":
         allday = st.checkbox("All Day")
         if not allday:
             t1, t2 = st.columns(2)
-            stime = t1.time_input("Start Time", time(10, 0))
-            etime = t2.time_input("End Time", time(17, 0))
+            stime = t1.time_input("Start Time", time(10,0))
+            etime = t2.time_input("End Time", time(17,0))
         else:
             stime = etime = ""
 
@@ -175,96 +132,75 @@ if st.session_state.page == "admin":
 
     # ---------- LIST ----------
     st.subheader("📋 Events")
-    if st.button("✏️ Edit", key=f'edit_{int(r["EventID"])}_{idx}'):
-
-        st.session_state.edit_id = int(r["EventID"])
-        st.session_state.page = "edit"
-        st.rerun()
 
     for idx, r in df.iterrows():
         with st.expander(f'{r["Program"]} – {r["Category"]}'):
             st.write(f'{r["Start Date"]} → {r["End Date"]}')
-            if st.button("❌ Delete", key=f'del_{int(r["EventID"])}_{_}'):
-                df = df[df["EventID"] != r["EventID"]]
+
+            c1, c2 = st.columns(2)
+
+            if c1.button("✏️ Edit", key=f"edit_{idx}"):
+                st.session_state.edit_idx = idx
+                st.session_state.page = "edit"
+                st.rerun()
+
+            if c2.button("❌ Delete", key=f"del_{idx}"):
+                df = df.drop(idx).reset_index(drop=True)
                 save_events(df)
                 st.rerun()
 
     if st.button("Logout"):
         st.session_state.page = "user"
         st.rerun()
-    elif st.session_state.page == "edit":
-
-        df = load_events()
-        df["EventID"] = df["EventID"].astype(int)
-    
-        event = df[df["EventID"] == st.session_state.edit_id].iloc[0]
-    
-        st.header("✏️ Edit Event")
-    
-        with st.form("edit_form"):
-    
-            program = st.selectbox(
-                "Program", PROGRAMS,
-                index=PROGRAMS.index(event["Program"])
-            )
-    
-            category = st.selectbox(
-                "Category", CATEGORIES,
-                index=CATEGORIES.index(event["Category"])
-            )
-    
-            c1, c2 = st.columns(2)
-            start_date = c1.date_input(
-                "Start Date", pd.to_datetime(event["Start Date"]).date()
-            )
-            end_date = c2.date_input(
-                "End Date", pd.to_datetime(event["End Date"]).date()
-            )
-    
-            all_day = st.checkbox(
-                "All Day", value=(event["All Day"] == "True")
-            )
-    
-            if not all_day:
-                t1, t2 = st.columns(2)
-                start_time = t1.time_input(
-                    "Start Time",
-                    pd.to_datetime(event["Start Time"], errors="coerce").time()
-                    if event["Start Time"] else time(10, 0)
-                )
-                end_time = t2.time_input(
-                    "End Time",
-                    pd.to_datetime(event["End Time"], errors="coerce").time()
-                    if event["End Time"] else time(17, 0)
-                )
-            else:
-                start_time = end_time = None
-    
-            update = st.form_submit_button("Update Event")
-    
-        if update:
-            df.loc[df["EventID"] == event["EventID"], :] = [
-                event["EventID"],
-                program,
-                category,
-                start_date,
-                end_date,
-                start_time.strftime("%I:%M %p") if start_time else "",
-                end_time.strftime("%I:%M %p") if end_time else "",
-                str(all_day)
-            ]
-    
-            save_events(df)
-            st.success("Event updated")
-            st.session_state.page = "admin"
-            st.rerun()
-    
-        if st.button("⬅ Back"):
-            st.session_state.page = "admin"
-            st.rerun()
 
 # ==================================================
-# USER
+# EDIT PAGE
+# ==================================================
+elif st.session_state.page == "edit":
+
+    df = load_events()
+    idx = st.session_state.edit_idx
+    r = df.iloc[idx]
+
+    st.header("✏️ Edit Event")
+
+    with st.form("edit_form"):
+        program = st.selectbox("Program", PROGRAMS, index=PROGRAMS.index(r["Program"]))
+        category = st.selectbox("Category", CATEGORIES, index=CATEGORIES.index(r["Category"]))
+
+        c1, c2 = st.columns(2)
+        sd = c1.date_input("Start Date", pd.to_datetime(r["Start Date"]).date())
+        ed = c2.date_input("End Date", pd.to_datetime(r["End Date"]).date())
+
+        allday = st.checkbox("All Day", value=(r["All Day"] == "True"))
+        if not allday:
+            t1, t2 = st.columns(2)
+            stime = t1.time_input("Start Time", time(10,0))
+            etime = t2.time_input("End Time", time(17,0))
+        else:
+            stime = etime = ""
+
+        update = st.form_submit_button("Update")
+
+    if update:
+        df.loc[idx] = [
+            r["EventID"], program, category,
+            sd, ed,
+            stime.strftime("%I:%M %p") if stime else "",
+            etime.strftime("%I:%M %p") if etime else "",
+            str(allday)
+        ]
+        save_events(df)
+        st.success("Event updated")
+        st.session_state.page = "admin"
+        st.rerun()
+
+    if st.button("⬅ Back"):
+        st.session_state.page = "admin"
+        st.rerun()
+
+# ==================================================
+# USER PAGE
 # ==================================================
 else:
 
@@ -282,7 +218,7 @@ else:
     else:
         df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce")
         df["End Date"] = pd.to_datetime(df["End Date"], errors="coerce")
-        df = df.dropna(subset=["Start Date", "End Date"])
+        df = df.dropna(subset=["Start Date","End Date"])
         df = df[df["End Date"].dt.date >= date.today()]
         df = df.sort_values("Start Date")
 
