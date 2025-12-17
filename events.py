@@ -125,13 +125,13 @@ if st.session_state.page == "login":
     with col1:
         if st.button("🔐 Login as Admin", use_container_width=True):
             st.session_state.page = "admin_login"
-            st.experimental_rerun()
+            st.rerun()
 
     with col2:
         if st.button("👤 Continue as User", use_container_width=True):
             st.session_state.role = "User"
             st.session_state.page = "user"
-            st.experimental_rerun()
+            st.rerun()
 
 # ==================================================
 # ADMIN LOGIN PAGE
@@ -149,13 +149,13 @@ if st.session_state.page == "admin_login":
             if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
                 st.session_state.role = "Admin"
                 st.session_state.page = "admin"
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Invalid username or password")
 
     if st.button("⬅ Back"):
         st.session_state.page = "login"
-        st.experimental_rerun()
+        st.rerun()
 
 # ==================================================
 # ADMIN PANEL
@@ -190,7 +190,7 @@ if st.session_state.page == "admin":
                     }])
                     save_events(pd.concat([events_df, new_row], ignore_index=True))
                     st.success("Event added successfully")
-                    st.experimental_rerun()
+                    st.rerun()
 
     # ---------- VIEW / DELETE ----------
     st.subheader("📋 All Events")
@@ -210,11 +210,11 @@ if st.session_state.page == "admin":
                 if st.button("❌ Delete", key=f"del_{i}"):
                     events_df = events_df.drop(i)
                     save_events(events_df)
-                    st.experimental_rerun()
+                    st.rerun()
 
     if st.button("Logout"):
         st.session_state.clear()
-        st.experimental_rerun()
+        st.rerun()
 
 # ==================================================
 # USER VIEW
@@ -242,4 +242,4 @@ if st.session_state.page == "user":
 
     if st.button("Exit"):
         st.session_state.clear()
-        st.experimental_rerun()
+        st.rerun()
