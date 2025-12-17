@@ -290,7 +290,7 @@ else:
         df["Month"] = df["Start Date"].dt.strftime("%B %Y")
         for m, g in df.groupby("Month"):
             st.markdown(f"<div class='section'>{m}</div>", unsafe_allow_html=True)
-            cols = st.columns(3)
+            cols = st.columns(4)
             for i, (_, r) in enumerate(g.iterrows()):
                 with cols[i % 3]:
                     card(r)
