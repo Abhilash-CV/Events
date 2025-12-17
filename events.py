@@ -110,12 +110,12 @@ if st.session_state.role is None:
             if login:
                 if u == ADMIN_USERNAME and p == ADMIN_PASSWORD:
                     st.session_state.role = "Admin"
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("Invalid credentials")
     else:
         st.session_state.role = "User"
-        st.experimental_rerun()
+        st.rerun()
 
 # --------------------------------------------------
 # LOAD & ENRICH DATA
@@ -153,7 +153,7 @@ if st.session_state.role == "Admin":
                     }])
                     save_events(pd.concat([events_df, new_row], ignore_index=True))
                     st.success("Event added successfully")
-                    st.experimental_rerun()
+                    st.rerun()
 
     # ---------------- MANAGE EVENTS ----------------
     st.subheader("📋 All Events")
@@ -175,11 +175,11 @@ if st.session_state.role == "Admin":
                 if st.button("❌ Delete", key=f"del_{i}"):
                     events_df = events_df.drop(i)
                     save_events(events_df)
-                    st.experimental_rerun()
+                    st.rerun()
 
     if st.button("Logout"):
         st.session_state.role = None
-        st.experimental_rerun()
+        st.rerun()
 
 # ==================================================
 # USER VIEW
@@ -207,4 +207,4 @@ if st.session_state.role == "User":
 
     if st.button("Exit"):
         st.session_state.role = None
-        st.experimental_rerun()
+        st.rerun()
