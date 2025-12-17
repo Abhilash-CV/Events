@@ -168,7 +168,7 @@ if st.session_state.page == "admin":
         df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
         save_events(df)
         st.success("Event added")
-        st.session_state.page = "user" 
+        
         st.rerun()
 
     st.subheader("📋 Events")
