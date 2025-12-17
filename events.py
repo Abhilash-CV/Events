@@ -3,15 +3,24 @@ import pandas as pd
 from datetime import date
 
 # --------------------------------------------------
-# CONFIG
+# PAGE CONFIG
 # --------------------------------------------------
-st.set_page_config(page_title="Admission Event Notifications", layout="centered")
+st.set_page_config(
+    page_title="Admission Event Notifications",
+    layout="centered"
+)
 
 DATA_FILE = "events.csv"
 
+# --------------------------------------------------
+# LOGIN CONFIG
+# --------------------------------------------------
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin@123"
 
+# --------------------------------------------------
+# EVENT CONFIG
+# --------------------------------------------------
 EVENT_CATEGORIES = [
     "Online Application",
     "Memo Clearance",
@@ -39,7 +48,9 @@ def load_events():
     try:
         df = pd.read_csv(DATA_FILE, parse_dates=["Start Date", "End Date"])
     except FileNotFoundError:
-        df = pd.DataFrame(columns=["Category", "Title", "Start Date", "End Date"])
+        df = pd.DataFrame(
+            columns=["Category", "Title", "Start Date", "End Date"]
+        )
     return df
 
 
@@ -47,7 +58,7 @@ def save_events(df):
     df.to_csv(DATA_FILE, index=False)
 
 
-def event_status(row):
+def get_status(row):
     today = pd.to_datetime(date.today())
     if row["End Date"] < today:
         return "Closed"
@@ -58,11 +69,22 @@ def event_status(row):
 
 
 def status_badge(status):
-    if status == "Active":
-        return "🟢 Active"
-    if status == "Upcoming":
-        return "🟡 Upcoming"
-    return "🔴 Closed"
+    return {
+        "Active": "🟢 Active",
+        "Upcoming": "🟡 Upcoming",
+        "Closed": "🔴 Closed"
+    }[status]
+
+
+def enrich_events(df):
+    """Always rebuild derived columns safely"""
+    if df.empty:
+        return df
+
+    df = df.copy()
+    df["Status"] = df.apply(get_status, axis=1)
+    df["Priority"] = df["Category"].map(CATEGORY_PRIORITY)
+    return df.sort_values(["Priority", "Start Date"])
 
 
 # --------------------------------------------------
@@ -80,43 +102,38 @@ if st.session_state.role is None:
     role = st.radio("Login As", ["User", "Admin"])
 
     if role == "Admin":
-        with st.form("login_form"):
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
+        with st.form("admin_login"):
+            u = st.text_input("Username")
+            p = st.text_input("Password", type="password")
             login = st.form_submit_button("Login")
 
             if login:
-                if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+                if u == ADMIN_USERNAME and p == ADMIN_PASSWORD:
                     st.session_state.role = "Admin"
-                    st.rerun()
+                    st.experimental_rerun()
                 else:
                     st.error("Invalid credentials")
     else:
         st.session_state.role = "User"
-        st.rerun()
+        st.experimental_rerun()
 
 # --------------------------------------------------
-# LOAD DATA
+# LOAD & ENRICH DATA
 # --------------------------------------------------
 events_df = load_events()
-today = pd.to_datetime(date.today())
+events_df = enrich_events(events_df)
 
-if not events_df.empty:
-    events_df["Status"] = events_df.apply(event_status, axis=1)
-    events_df["Priority"] = events_df["Category"].map(CATEGORY_PRIORITY)
-    events_df = events_df.sort_values(["Priority", "Start Date"])
-
-# --------------------------------------------------
+# ==================================================
 # ADMIN VIEW
-# --------------------------------------------------
+# ==================================================
 if st.session_state.role == "Admin":
 
     st.subheader("🛠 Admin Panel")
 
-    # ADD EVENT
-    with st.expander("➕ Add Event", expanded=True):
+    # ---------------- ADD EVENT ----------------
+    with st.expander("➕ Add New Event", expanded=True):
         with st.form("add_event"):
-            cat = st.selectbox("Category", EVENT_CATEGORIES)
+            cat = st.selectbox("Event Category", EVENT_CATEGORIES)
             title = st.text_input("Event Description")
             c1, c2 = st.columns(2)
             with c1:
@@ -124,26 +141,25 @@ if st.session_state.role == "Admin":
             with c2:
                 end = st.date_input("End Date", min_value=start)
 
-            if st.form_submit_button("Add"):
-                events_df = pd.concat([
-                    events_df,
-                    pd.DataFrame([{
+            if st.form_submit_button("Add Event"):
+                if title.strip() == "":
+                    st.error("Event description required")
+                else:
+                    new_row = pd.DataFrame([{
                         "Category": cat,
                         "Title": title,
                         "Start Date": start,
                         "End Date": end
                     }])
-                ], ignore_index=True)
+                    save_events(pd.concat([events_df, new_row], ignore_index=True))
+                    st.success("Event added successfully")
+                    st.experimental_rerun()
 
-                save_events(events_df)
-                st.success("Event added")
-                st.rerun()
-
-    # MANAGE EVENTS
-    st.subheader("📋 Manage Events")
+    # ---------------- MANAGE EVENTS ----------------
+    st.subheader("📋 All Events")
 
     if events_df.empty:
-        st.info("No events found")
+        st.info("No events available")
     else:
         events_df = events_df.reset_index(drop=True)
 
@@ -151,39 +167,44 @@ if st.session_state.role == "Admin":
             with st.container(border=True):
                 st.markdown(f"### {row['Category']}")
                 st.write(row["Title"])
-                st.write(f"🗓 {row['Start Date'].date()} → {row['End Date'].date()}")
+                st.write(
+                    f"🗓 {row['Start Date'].date()} → {row['End Date'].date()}"
+                )
                 st.write(status_badge(row["Status"]))
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("❌ Delete", key=f"d{i}"):
-                        events_df = events_df.drop(i)
-                        save_events(events_df)
-                        st.rerun()
+                if st.button("❌ Delete", key=f"del_{i}"):
+                    events_df = events_df.drop(i)
+                    save_events(events_df)
+                    st.experimental_rerun()
 
     if st.button("Logout"):
         st.session_state.role = None
-        st.rerun()
+        st.experimental_rerun()
 
-# --------------------------------------------------
+# ==================================================
 # USER VIEW
-# --------------------------------------------------
+# ==================================================
 if st.session_state.role == "User":
 
     st.subheader("📌 Admission Event Schedule")
 
-    visible = events_df[events_df["Status"] != "Closed"]
-
-    if visible.empty:
-        st.info("No active or upcoming notifications")
+    if events_df.empty:
+        st.info("No notifications available")
     else:
-        for _, row in visible.iterrows():
-            with st.container(border=True):
-                st.markdown(f"### {row['Category']}")
-                st.write(row["Title"])
-                st.write(f"🗓 {row['Start Date'].date()} → {row['End Date'].date()}")
-                st.write(status_badge(row["Status"]))
+        visible = events_df[events_df["Status"] != "Closed"]
+
+        if visible.empty:
+            st.info("No active or upcoming notifications")
+        else:
+            for _, row in visible.iterrows():
+                with st.container(border=True):
+                    st.markdown(f"### {row['Category']}")
+                    st.write(row["Title"])
+                    st.write(
+                        f"🗓 {row['Start Date'].date()} → {row['End Date'].date()}"
+                    )
+                    st.write(status_badge(row["Status"]))
 
     if st.button("Exit"):
         st.session_state.role = None
-        st.rerun()
+        st.experimental_rerun()
