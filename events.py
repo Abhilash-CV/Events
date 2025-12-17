@@ -241,6 +241,9 @@ elif st.session_state.page == "edit":
 # ==================================================
 # USER PAGE (ENHANCED)
 # ==================================================
+# ==================================================
+# USER PAGE (ENHANCED) - FIXED FILTERING
+# ==================================================
 else:
 
     col1, col2 = st.columns([8,2])
@@ -260,21 +263,33 @@ else:
     df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce").dt.normalize()
     df["End Date"] = pd.to_datetime(df["End Date"], errors="coerce").dt.normalize()
     
-    # KEEP rows with valid dates OR same-day events
+    # Keep only rows with valid dates
     df = df[
         (df["Start Date"].notna()) &
         (df["End Date"].notna())
     ]
     
-    # Show today + future events
+    if df.empty:
+        st.info("No valid events available")
+        st.stop()
+    
+    # Get today's date for filtering
     today = pd.Timestamp.today().normalize()
-
+    
+    # Show events that:
+    # 1. Start today or in the future, OR
+    # 2. Are currently ongoing (started before today and end today or in the future)
+    df["End Date"] = pd.to_datetime(df["End Date"])
+    
+    # Filter events that are either upcoming or currently ongoing
     df = df[
-        (df["Start Date"] <= today) |
-        (df["End Date"] >= today)
+        (df["Start Date"] <= df["End Date"]) &  # Ensure valid date range
+        (
+            (df["Start Date"] >= today) |  # Future events
+            (df["End Date"] >= today)      # Ongoing events (including multi-day)
+        )
     ]
-
-
+    
     df = df.sort_values("Start Date")
 
     # ---- Filters ----
@@ -297,11 +312,42 @@ else:
         df = df[(df["Start Date"].dt.date >= dr[0]) &
                 (df["End Date"].dt.date <= dr[1])]
 
+    # ---- Show all events toggle ----
+    show_all = st.checkbox("Show all events (including past events)", value=False)
+    if not show_all:
+        # For "Cards", "Weekly", and "Monthly" views, we already filtered above
+        # For "Calendar" view, we need to ensure it shows future/ongoing events
+        pass
+    else:
+        # Reload all events without date filtering
+        df = load_events()
+        df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce").dt.normalize()
+        df["End Date"] = pd.to_datetime(df["End Date"], errors="coerce").dt.normalize()
+        df = df[(df["Start Date"].notna()) & (df["End Date"].notna())]
+        df = df.sort_values("Start Date")
+        
+        # Reapply other filters
+        if search:
+            df = df[df["Program"].str.contains(search, case=False) |
+                    df["Category"].str.contains(search, case=False)]
+        if program != "All":
+            df = df[df["Program"] == program]
+        if category != "All":
+            df = df[df["Category"] == category]
+        if len(dr) == 2:
+            df = df[(df["Start Date"].dt.date >= dr[0]) &
+                    (df["End Date"].dt.date <= dr[1])]
+
     # ---- Export ----
-    st.download_button("📄 Download PDF", export_pdf(df), "events.pdf")
+    if not df.empty:
+        st.download_button("📄 Download PDF", export_pdf(df), "events.pdf")
+    else:
+        st.info("No events match your filters")
 
     # ---- Views ----
-    if view == "Cards":
+    if df.empty:
+        st.warning("No events to display")
+    elif view == "Cards":
         df["Month"] = df["Start Date"].dt.strftime("%B %Y")
         for m, g in df.groupby("Month"):
             st.markdown(f"<div class='section'>{m}</div>", unsafe_allow_html=True)
@@ -337,8 +383,14 @@ else:
 
         for i, d in enumerate(days):
             with cols[i % 7]:
-                st.caption(d.strftime("%d %b"))
-                for _, r in df[df["Start Date"].dt.date == d.date()].iterrows():
+                day_class = "today" if d.date() == date.today() else ""
+                st.markdown(f'<div class="{day_class}">{d.strftime("%d %b")}</div>', 
+                          unsafe_allow_html=True)
+                day_events = df[
+                    (df["Start Date"].dt.date <= d.date()) & 
+                    (df["End Date"].dt.date >= d.date())
+                ]
+                for _, r in day_events.iterrows():
                     st.markdown(
                         f"<div class='program'>{r['Program']}</div>",
                         unsafe_allow_html=True
