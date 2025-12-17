@@ -191,6 +191,76 @@ if st.session_state.page == "admin":
     if st.button("Logout"):
         st.session_state.page = "user"
         st.rerun()
+    elif st.session_state.page == "edit":
+
+        df = load_events()
+        df["EventID"] = df["EventID"].astype(int)
+    
+        event = df[df["EventID"] == st.session_state.edit_id].iloc[0]
+    
+        st.header("✏️ Edit Event")
+    
+        with st.form("edit_form"):
+    
+            program = st.selectbox(
+                "Program", PROGRAMS,
+                index=PROGRAMS.index(event["Program"])
+            )
+    
+            category = st.selectbox(
+                "Category", CATEGORIES,
+                index=CATEGORIES.index(event["Category"])
+            )
+    
+            c1, c2 = st.columns(2)
+            start_date = c1.date_input(
+                "Start Date", pd.to_datetime(event["Start Date"]).date()
+            )
+            end_date = c2.date_input(
+                "End Date", pd.to_datetime(event["End Date"]).date()
+            )
+    
+            all_day = st.checkbox(
+                "All Day", value=(event["All Day"] == "True")
+            )
+    
+            if not all_day:
+                t1, t2 = st.columns(2)
+                start_time = t1.time_input(
+                    "Start Time",
+                    pd.to_datetime(event["Start Time"], errors="coerce").time()
+                    if event["Start Time"] else time(10, 0)
+                )
+                end_time = t2.time_input(
+                    "End Time",
+                    pd.to_datetime(event["End Time"], errors="coerce").time()
+                    if event["End Time"] else time(17, 0)
+                )
+            else:
+                start_time = end_time = None
+    
+            update = st.form_submit_button("Update Event")
+    
+        if update:
+            df.loc[df["EventID"] == event["EventID"], :] = [
+                event["EventID"],
+                program,
+                category,
+                start_date,
+                end_date,
+                start_time.strftime("%I:%M %p") if start_time else "",
+                end_time.strftime("%I:%M %p") if end_time else "",
+                str(all_day)
+            ]
+    
+            save_events(df)
+            st.success("Event updated")
+            st.session_state.page = "admin"
+            st.rerun()
+    
+        if st.button("⬅ Back"):
+            st.session_state.page = "admin"
+            st.rerun()
 
 # ==================================================
 # USER
