@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import date
 
 # ==================================================
-# CONFIG
+# APP CONFIG
 # ==================================================
 st.set_page_config(page_title="Admission Events", layout="centered")
 
@@ -11,6 +11,9 @@ DATA_FILE = "events.csv"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin@123"
 
+# ==================================================
+# MASTER DATA
+# ==================================================
 EXAMS = [
     "KEAM", "LLB 3 Year", "LLB 5 Year", "LLM",
     "PG Ayurveda", "PG Homoeo", "PG Nursing"
@@ -40,49 +43,61 @@ CATEGORY_PRIORITY = {
 # SESSION STATE
 # ==================================================
 st.session_state.setdefault("page", "login")
+st.session_state.setdefault("edit_event_id", None)
 
 # ==================================================
-# DATA FUNCTIONS
+# DATA LAYER (SOURCE OF TRUTH)
 # ==================================================
+BASE_COLUMNS = [
+    "EventID", "Order", "Exam", "Category",
+    "Title", "Start Date", "End Date"
+]
+
 def load_events():
     try:
         df = pd.read_csv(DATA_FILE)
     except FileNotFoundError:
-        df = pd.DataFrame(
-            columns=[
-                "EventID", "Exam", "Category", "Title",
-                "Start Date", "End Date", "Order"
-            ]
-        )
+        return pd.DataFrame(columns=BASE_COLUMNS)
 
-    if df.empty:
-        return df
+    # Ensure schema
+    for col in BASE_COLUMNS:
+        if col not in df.columns:
+            df[col] = None
 
-    if "EventID" not in df.columns:
-        df.insert(0, "EventID", range(1, len(df) + 1))
-
-    if "Order" not in df.columns:
-        df["Order"] = range(1, len(df) + 1)
-
+    # Force types
+    df["EventID"] = pd.to_numeric(df["EventID"], errors="coerce")
+    df["Order"] = pd.to_numeric(df["Order"], errors="coerce")
     df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce")
     df["End Date"] = pd.to_datetime(df["End Date"], errors="coerce")
-    df = df.dropna(subset=["Start Date", "End Date"])
 
-    return df
+    # Drop corrupt rows
+    df = df.dropna(subset=["EventID", "Order", "Start Date", "End Date"])
+
+    return df.sort_values("Order").reset_index(drop=True)
 
 
 def save_events(df):
-    df.to_csv(DATA_FILE, index=False)
+    df[BASE_COLUMNS].to_csv(DATA_FILE, index=False)
 
 
+def next_event_id(df):
+    return 1 if df.empty else int(df["EventID"].max()) + 1
+
+
+def next_order(df):
+    return 1 if df.empty else int(df["Order"].max()) + 1
+
+
+# ==================================================
+# RUNTIME (DERIVED) LOGIC
+# ==================================================
 def event_status(row):
     today = pd.to_datetime(date.today())
     if row["End Date"] < today:
         return "Closed"
     elif row["Start Date"] > today:
         return "Upcoming"
-    else:
-        return "Active"
+    return "Active"
 
 
 def enrich(df):
@@ -92,10 +107,7 @@ def enrich(df):
     df = df.copy()
     df["Status"] = df.apply(event_status, axis=1)
     df["CatPriority"] = df["Category"].map(CATEGORY_PRIORITY).fillna(99)
-
-    return df.sort_values(
-        ["Exam", "CatPriority", "Order"]
-    )
+    return df.sort_values(["Exam", "CatPriority", "Order"])
 
 
 # ==================================================
@@ -114,6 +126,7 @@ if st.session_state.page == "login":
     if c2.button("👤 Continue as User", use_container_width=True):
         st.session_state.page = "user"
         st.rerun()
+
 
 # ==================================================
 # ADMIN LOGIN
@@ -138,6 +151,7 @@ elif st.session_state.page == "admin_login":
         st.session_state.page = "login"
         st.rerun()
 
+
 # ==================================================
 # ADMIN PANEL
 # ==================================================
@@ -145,9 +159,9 @@ elif st.session_state.page == "admin":
 
     st.subheader("🛠 Admin Panel")
 
-    # -------- ADD EVENT --------
+    # ---------- ADD EVENT ----------
     with st.expander("➕ Add Event", expanded=True):
-        with st.form("add_event"):
+        with st.form("add_event_form"):
             exam = st.selectbox("Exam", EXAMS)
             category = st.selectbox("Category", EVENT_CATEGORIES)
             title = st.text_input("Event Description")
@@ -156,119 +170,128 @@ elif st.session_state.page == "admin":
             start = c1.date_input("Start Date")
             end = c2.date_input("End Date", min_value=start)
 
-            submit = st.form_submit_button("Add Event")
+            add = st.form_submit_button("Add Event")
 
-        if submit and title.strip():
-            df = load_events()
-            new_id = 1 if df.empty else df["EventID"].max() + 1
-            new_order = 1 if df.empty else df["Order"].max() + 1
+        if add:
+            if not title.strip():
+                st.error("Event description is required")
+            else:
+                df = load_events()
+                df = pd.concat(
+                    [
+                        df,
+                        pd.DataFrame([{
+                            "EventID": next_event_id(df),
+                            "Order": next_order(df),
+                            "Exam": exam,
+                            "Category": category,
+                            "Title": title,
+                            "Start Date": start,
+                            "End Date": end
+                        }])
+                    ],
+                    ignore_index=True
+                )
+                save_events(df)
+                st.success("Event added successfully")
+                st.rerun()
 
-            new_row = {
-                "EventID": new_id,
-                "Exam": exam,
-                "Category": category,
-                "Title": title,
-                "Start Date": start,
-                "End Date": end,
-                "Order": new_order
-            }
-
-            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-            save_events(df)
-            st.success("Event added")
-            st.rerun()
-
-    # -------- MANAGE EVENTS --------
-    df = enrich(load_events())
+    # ---------- MANAGE EVENTS ----------
+    base_df = load_events()
+    view_df = enrich(base_df)
 
     st.divider()
     st.subheader("📋 Manage Events")
 
-    if df.empty:
+    if view_df.empty:
         st.info("No events available")
     else:
-        for _, r in df.iterrows():
+        for _, r in view_df.iterrows():
             with st.container(border=True):
                 st.markdown(f"### {r['Exam']} – {r['Category']}")
                 st.write(r["Title"])
                 st.write(f"{r['Start Date'].date()} → {r['End Date'].date()} ({r['Status']})")
 
-                col1, col2, col3, col4 = st.columns(4)
+                c1, c2, c3, c4 = st.columns(4)
 
-                # ---- MOVE UP ----
-                if col1.button("⬆ Move Up", key=f"up{r['EventID']}"):
-                    base = load_events()
-                    idx = base.index[base["EventID"] == r["EventID"]][0]
+                # Move Up
+                if c1.button("⬆", key=f"up{r['EventID']}"):
+                    df = load_events()
+                    idx = df.index[df["EventID"] == r["EventID"]][0]
                     if idx > 0:
-                        base.loc[idx, "Order"], base.loc[idx - 1, "Order"] = (
-                            base.loc[idx - 1, "Order"],
-                            base.loc[idx, "Order"]
+                        df.loc[idx, "Order"], df.loc[idx - 1, "Order"] = (
+                            df.loc[idx - 1, "Order"],
+                            df.loc[idx, "Order"]
                         )
-                        save_events(base)
+                        save_events(df)
                         st.rerun()
 
-                # ---- MOVE DOWN ----
-                if col2.button("⬇ Move Down", key=f"dn{r['EventID']}"):
-                    base = load_events()
-                    idx = base.index[base["EventID"] == r["EventID"]][0]
-                    if idx < len(base) - 1:
-                        base.loc[idx, "Order"], base.loc[idx + 1, "Order"] = (
-                            base.loc[idx + 1, "Order"],
-                            base.loc[idx, "Order"]
+                # Move Down
+                if c2.button("⬇", key=f"dn{r['EventID']}"):
+                    df = load_events()
+                    idx = df.index[df["EventID"] == r["EventID"]][0]
+                    if idx < len(df) - 1:
+                        df.loc[idx, "Order"], df.loc[idx + 1, "Order"] = (
+                            df.loc[idx + 1, "Order"],
+                            df.loc[idx, "Order"]
                         )
-                        save_events(base)
+                        save_events(df)
                         st.rerun()
 
-                # ---- EDIT ----
-                if col3.button("✏️ Edit", key=f"ed{r['EventID']}"):
-                    st.session_state.edit_id = r["EventID"]
+                # Edit
+                if c3.button("✏️ Edit", key=f"ed{r['EventID']}"):
+                    st.session_state.edit_event_id = r["EventID"]
                     st.session_state.page = "edit"
                     st.rerun()
 
-                # ---- DELETE ----
-                if col4.button("❌ Delete", key=f"dl{r['EventID']}"):
-                    base = load_events()
-                    base = base[base["EventID"] != r["EventID"]]
-                    save_events(base)
+                # Delete
+                if c4.button("❌ Delete", key=f"dl{r['EventID']}"):
+                    df = load_events()
+                    df = df[df["EventID"] != r["EventID"]]
+                    save_events(df)
                     st.rerun()
 
     if st.button("Logout"):
         st.session_state.clear()
         st.rerun()
 
+
 # ==================================================
-# EDIT EVENT PAGE
+# EDIT EVENT
 # ==================================================
 elif st.session_state.page == "edit":
 
     df = load_events()
-    event = df[df["EventID"] == st.session_state.edit_id].iloc[0]
+    event = df[df["EventID"] == st.session_state.edit_event_id].iloc[0]
 
     st.subheader("✏️ Edit Event")
 
     with st.form("edit_form"):
         exam = st.selectbox("Exam", EXAMS, index=EXAMS.index(event["Exam"]))
-        category = st.selectbox("Category", EVENT_CATEGORIES, index=EVENT_CATEGORIES.index(event["Category"]))
+        category = st.selectbox("Category", EVENT_CATEGORIES,
+                                index=EVENT_CATEGORIES.index(event["Category"]))
         title = st.text_input("Description", value=event["Title"])
 
         c1, c2 = st.columns(2)
         start = c1.date_input("Start Date", value=event["Start Date"])
         end = c2.date_input("End Date", value=event["End Date"], min_value=start)
 
-        update = st.form_submit_button("Update")
+        update = st.form_submit_button("Update Event")
 
     if update:
-        df.loc[df["EventID"] == event["EventID"], ["Exam", "Category", "Title", "Start Date", "End Date"]] = [
-            exam, category, title, start, end
-        ]
+        df.loc[df["EventID"] == event["EventID"],
+               ["Exam", "Category", "Title", "Start Date", "End Date"]] = \
+            [exam, category, title, start, end]
+
         save_events(df)
-        st.success("Event updated")
         st.session_state.page = "admin"
+        st.success("Event updated")
         st.rerun()
 
     if st.button("⬅ Back"):
         st.session_state.page = "admin"
         st.rerun()
+
 
 # ==================================================
 # USER VIEW
@@ -279,6 +302,7 @@ elif st.session_state.page == "user":
 
     exam = st.selectbox("Select Exam", EXAMS)
     df = enrich(load_events())
+
     df = df[(df["Exam"] == exam) & (df["Status"] != "Closed")]
 
     if df.empty:
