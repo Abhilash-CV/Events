@@ -60,11 +60,11 @@ st.markdown("""
 <style>
 .card {
   background: #95d1fc;
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 3px;
   text-align: center;
   box-shadow: 0 1px 6px rgba(0,0,0,.08);
-  margin-bottom: 10px;
+  margin-bottom: 4px;
   color: #0b3558; /* dark text for contrast */
 }
 .card:hover {
