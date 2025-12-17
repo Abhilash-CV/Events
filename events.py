@@ -3,14 +3,17 @@ import pandas as pd
 from datetime import date
 
 # ==================================================
-# CONFIG
+# APP CONFIG
 # ==================================================
-st.set_page_config(page_title="Admission Events", layout="centered")
+st.set_page_config(page_title="Admission Event Notifications", layout="centered")
 
 DATA_FILE = "events.csv"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin@123"
 
+# ==================================================
+# MASTER DATA
+# ==================================================
 EXAMS = [
     "KEAM", "LLB 3 Year", "LLB 5 Year", "LLM",
     "PG Ayurveda", "PG Homoeo", "PG Nursing"
@@ -33,7 +36,7 @@ st.session_state.setdefault("page", "login")
 st.session_state.setdefault("edit_id", None)
 
 # ==================================================
-# DATA LAYER (SOURCE OF TRUTH)
+# DATA LAYER (FIXED & SAFE)
 # ==================================================
 BASE_COLS = ["EventID", "Order", "Exam", "Category", "Title", "Start Date", "End Date"]
 
@@ -41,18 +44,27 @@ def load_events():
     try:
         df = pd.read_csv(DATA_FILE)
     except FileNotFoundError:
-        df = pd.DataFrame(columns=BASE_COLS)
+        return pd.DataFrame(columns=BASE_COLS)
 
-    for c in BASE_COLS:
-        if c not in df.columns:
-            df[c] = None
+    # Ensure all columns exist
+    for col in BASE_COLS:
+        if col not in df.columns:
+            df[col] = None
 
+    # Type coercion
     df["EventID"] = pd.to_numeric(df["EventID"], errors="coerce")
-    df["Order"] = pd.to_numeric(df["Order"], errors="coerce")
     df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce")
     df["End Date"] = pd.to_datetime(df["End Date"], errors="coerce")
 
-    df = df.dropna(subset=["EventID", "Order", "Start Date", "End Date"])
+    # 🔑 CRITICAL FIX: auto-fill Order if missing
+    if df["Order"].isna().any():
+        df["Order"] = range(1, len(df) + 1)
+
+    df["Order"] = pd.to_numeric(df["Order"], errors="coerce")
+
+    # Drop only truly broken rows
+    df = df.dropna(subset=["EventID", "Start Date", "End Date"])
+
     return df.sort_values("Order").reset_index(drop=True)
 
 
@@ -68,7 +80,7 @@ def next_order(df):
     return 1 if df.empty else int(df["Order"].max()) + 1
 
 # ==================================================
-# DERIVED (READ-ONLY) LOGIC
+# DERIVED (READ-ONLY)
 # ==================================================
 def event_status(row):
     today = pd.to_datetime(date.today())
@@ -166,63 +178,50 @@ elif st.session_state.page == "admin":
                 st.success("Event added successfully")
                 st.rerun()
 
-    # ---------- MANAGE EVENTS (RAW, ALL ROWS) ----------
+    # ---------- MANAGE EVENTS (ALL ROWS) ----------
+    df = load_events()
+
     st.divider()
     st.subheader("📋 Manage Events")
-    
-    df = load_events()
-    
+
     if df.empty:
         st.info("No events available")
     else:
         for _, r in df.iterrows():
-    
             with st.expander(
                 f"{r['Exam']} – {r['Category']} (Event ID {r['EventID']})",
                 expanded=True
             ):
                 st.write(r["Title"])
                 st.write(f"{r['Start Date'].date()} → {r['End Date'].date()}")
-    
+
                 c1, c2, c3, c4 = st.columns(4)
-    
-                # Move Up
+
                 if c1.button("⬆ Move Up", key=f"up_{r['EventID']}"):
-                    df2 = load_events()
-                    idx = df2.index[df2["EventID"] == r["EventID"]][0]
+                    idx = df.index[df["EventID"] == r["EventID"]][0]
                     if idx > 0:
-                        df2.loc[idx, "Order"], df2.loc[idx - 1, "Order"] = (
-                            df2.loc[idx - 1, "Order"],
-                            df2.loc[idx, "Order"]
-                        )
-                        save_events(df2)
+                        df.loc[idx, "Order"], df.loc[idx-1, "Order"] = \
+                            df.loc[idx-1, "Order"], df.loc[idx, "Order"]
+                        save_events(df)
                         st.rerun()
-    
-                # Move Down
+
                 if c2.button("⬇ Move Down", key=f"dn_{r['EventID']}"):
-                    df2 = load_events()
-                    idx = df2.index[df2["EventID"] == r["EventID"]][0]
-                    if idx < len(df2) - 1:
-                        df2.loc[idx, "Order"], df2.loc[idx + 1, "Order"] = (
-                            df2.loc[idx + 1, "Order"],
-                            df2.loc[idx, "Order"]
-                        )
-                        save_events(df2)
+                    idx = df.index[df["EventID"] == r["EventID"]][0]
+                    if idx < len(df)-1:
+                        df.loc[idx, "Order"], df.loc[idx+1, "Order"] = \
+                            df.loc[idx+1, "Order"], df.loc[idx, "Order"]
+                        save_events(df)
                         st.rerun()
-    
-                # Edit
+
                 if c3.button("✏️ Edit", key=f"ed_{r['EventID']}"):
                     st.session_state.edit_id = r["EventID"]
                     st.session_state.page = "edit"
                     st.rerun()
-    
-                # Delete
+
                 if c4.button("❌ Delete", key=f"dl_{r['EventID']}"):
-                    df2 = load_events()
-                    df2 = df2[df2["EventID"] != r["EventID"]]
+                    df2 = df[df["EventID"] != r["EventID"]]
                     save_events(df2)
                     st.rerun()
-
 
     if st.button("Logout"):
         st.session_state.clear()
@@ -278,8 +277,7 @@ elif st.session_state.page == "user":
         st.info("No active or upcoming events")
     else:
         for _, r in df.iterrows():
-            status = event_status(r)
-            badge = "🟢 Active" if status == "Active" else "🟡 Upcoming"
+            badge = "🟢 Active" if event_status(r) == "Active" else "🟡 Upcoming"
             with st.container(border=True):
                 st.markdown(f"### {r['Category']} {badge}")
                 st.write(r["Title"])
