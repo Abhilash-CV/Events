@@ -76,13 +76,13 @@ if st.session_state.role is None:
                 if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
                     st.session_state.role = "Admin"
                     st.success("Admin login successful")
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("Invalid credentials")
 
     else:
         st.session_state.role = "User"
-        st.experimental_rerun()
+        st.rerun()
 
 # --------------------------------------------------
 # LOAD & CLEAN DATA
@@ -140,11 +140,11 @@ if st.session_state.role == "Admin":
                 if st.button("❌ Delete", key=f"del_{idx}"):
                     events_df = events_df.drop(idx)
                     save_events(events_df)
-                    st.experimental_rerun()
+                    st.rerun()
 
     if st.button("Logout"):
         st.session_state.role = None
-        st.experimental_rerun()
+        st.rerun()
 
 # --------------------------------------------------
 # USER VIEW
@@ -172,4 +172,4 @@ if st.session_state.role == "User":
 
     if st.button("Exit"):
         st.session_state.role = None
-        st.experimental_rerun()
+        st.rerun()
