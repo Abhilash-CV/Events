@@ -125,7 +125,7 @@ if st.session_state.role == "":
     elif role == "User":
         if st.button("Continue as User"):
             st.session_state.role = "User"
-            st.rerun()
+            st.experimental_rerun()
 
 # --------------------------------------------------
 # LOAD & ENRICH DATA
